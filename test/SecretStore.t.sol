@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.22;
 
 import "forge-std/Test.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -158,14 +158,14 @@ contract SecretStoreTest is Test {
     }
 
     // Helper functions
-    function _createSignatures(bytes32 messageHash) internal returns (bytes memory, bytes memory) {
+    function _createSignatures(bytes32 messageHash) internal view returns (bytes memory, bytes memory) {
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes memory signatureA = _sign(partyAKey, ethSignedMessageHash);
         bytes memory signatureB = _sign(partyBKey, ethSignedMessageHash);
         return (signatureA, signatureB);
     }
 
-    function _sign(uint256 privateKey, bytes32 hash) internal returns (bytes memory) {
+    function _sign(uint256 privateKey, bytes32 hash) internal pure returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, hash);
         return abi.encodePacked(r, s, v);
     }
