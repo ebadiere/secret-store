@@ -43,7 +43,7 @@ contract SecretStoreFuzzTest is Test {
     }
 
     /// @notice Helper function to create signatures for a secret hash
-    function _createSignatures(bytes32 secretHash) internal returns (bytes memory, bytes memory) {
+    function _createSignatures(bytes32 secretHash) internal view returns (bytes memory, bytes memory) {
         bytes32 structHash = keccak256(abi.encode(TYPEHASH, secretHash, partyA, partyB));
         bytes32 digest = MessageHashUtils.toTypedDataHash(secretStore.DOMAIN_SEPARATOR(), structHash);
 
