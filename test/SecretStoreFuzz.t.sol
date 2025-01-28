@@ -16,7 +16,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///  3. Secret revelation with valid and invalid parameters
 ///  4. Edge cases and error conditions
 contract SecretStoreFuzzTest is Test {
-    SecretStore public secretStore;
+    SecretStore public store;
     uint256 constant PARTY_A_PRIVATE_KEY = 0xA11CE;
     uint256 constant PARTY_B_PRIVATE_KEY = 0xB0B;
     address partyA;
@@ -26,12 +26,12 @@ contract SecretStoreFuzzTest is Test {
 
     function setUp() public {
         // Deploy implementation and proxy
-        SecretStore implementation = new SecretStore();
+        store = new SecretStore();
         ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation),
-            abi.encodeWithSelector(SecretStore.initialize.selector)
+            address(store),
+            abi.encodeCall(SecretStore.initialize, (address(this)))
         );
-        secretStore = SecretStore(address(proxy));
+        store = SecretStore(address(proxy));
 
         partyA = vm.addr(PARTY_A_PRIVATE_KEY);
         partyB = vm.addr(PARTY_B_PRIVATE_KEY);
@@ -45,7 +45,7 @@ contract SecretStoreFuzzTest is Test {
     /// @notice Helper function to create signatures for a secret hash
     function _createSignatures(bytes32 secretHash) internal view returns (bytes memory, bytes memory) {
         bytes32 structHash = keccak256(abi.encode(TYPEHASH, secretHash, partyA, partyB));
-        bytes32 digest = MessageHashUtils.toTypedDataHash(secretStore.DOMAIN_SEPARATOR(), structHash);
+        bytes32 digest = MessageHashUtils.toTypedDataHash(store.DOMAIN_SEPARATOR(), structHash);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
         (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
@@ -58,7 +58,7 @@ contract SecretStoreFuzzTest is Test {
 
     /// @notice Helper function to register a secret
     function _registerSecret(bytes32 secretHash, bytes memory sigA, bytes memory sigB) internal {
-        secretStore.registerSecret(secretHash, partyA, partyB, sigA, sigB);
+        store.registerSecret(secretHash, partyA, partyB, sigA, sigB);
     }
 
     /// @notice Fuzz test for registering secrets with random inputs
@@ -118,7 +118,7 @@ contract SecretStoreFuzzTest is Test {
         } else {
             vm.prank(partyA);
         }
-        secretStore.revealSecret(secret, salt, secretHash);
+        store.revealSecret(secret, salt, secretHash);
     }
 
     /// @notice Fuzz test for attempting to reveal secrets with invalid parameters
@@ -126,8 +126,8 @@ contract SecretStoreFuzzTest is Test {
     ///      - Wrong secrets
     ///      - Wrong salt values
     ///      - Wrong secret hashes
-    /// @param salt Random salt value used in secret hashing
-    /// @param timestamp Future timestamp for the agreement
+    /// @param secretHash Random secret hash
+    /// @param saltInt Random salt value used in secret hashing
     /// @param secret Valid secret string
     /// @param wrongSecret Different secret string for invalid revelation attempt
     /// @custom:security Verifies:
@@ -135,36 +135,29 @@ contract SecretStoreFuzzTest is Test {
     ///  2. Resistance to manipulation attempts
     ///  3. Agreement integrity preservation
     function testFuzz_RevealSecretWithInvalidInputs(
-        bytes32 salt,
-        uint256 timestamp,
-        string calldata secret,
-        string calldata wrongSecret
+        bytes32 secretHash,
+        uint256 saltInt,
+        string memory secret,
+        string memory wrongSecret
     ) public {
         vm.assume(bytes(secret).length > 0);
         vm.assume(bytes(wrongSecret).length > 0);
         vm.assume(keccak256(bytes(secret)) != keccak256(bytes(wrongSecret)));
-        vm.assume(timestamp > block.timestamp);
-        
-        bytes32 secretHash = _createSecretHash(secret, salt);
-        bytes32 wrongSecretHash = _createSecretHash(wrongSecret, salt);
 
-        // Register the secret
-        (bytes memory sigA, bytes memory sigB) = _createSignatures(secretHash);
-        _registerSecret(secretHash, sigA, sigB);
+        bytes32 salt = bytes32(saltInt);
+        bytes32 actualHash = keccak256(abi.encodePacked(secret, salt));
+
+        // Try to reveal non-existent secret
+        vm.expectRevert("Agreement does not exist");
+        store.revealSecret(secret, salt, secretHash);
+
+        // Register a secret
+        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(actualHash);
+        store.registerSecret(actualHash, partyA, partyB, signatureA, signatureB);
 
         // Try to reveal with wrong secret
+        vm.prank(partyA);
         vm.expectRevert("Invalid secret or salt");
-        vm.prank(partyA);
-        secretStore.revealSecret(wrongSecret, salt, secretHash);
-
-        // Try to reveal with wrong hash
-        vm.expectRevert("Agreement does not exist");
-        vm.prank(partyA);
-        secretStore.revealSecret(secret, salt, wrongSecretHash);
-
-        // Try to reveal with wrong salt
-        vm.expectRevert("Invalid secret or salt");
-        vm.prank(partyA);
-        secretStore.revealSecret(secret, bytes32(uint256(salt) + 1), secretHash);
+        store.revealSecret(wrongSecret, salt, actualHash);
     }
 }

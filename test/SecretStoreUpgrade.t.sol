@@ -15,6 +15,7 @@ contract SecretStoreUpgradeTest is Test {
 
     SecretStore public implementation;
     SecretStore public store;
+    ERC1967Proxy public proxy;
     address public admin;
     uint256 constant PARTY_A_KEY = 0x1;
     uint256 constant PARTY_B_KEY = 0x2;
@@ -32,10 +33,11 @@ contract SecretStoreUpgradeTest is Test {
         
         // Deploy implementation and proxy
         implementation = new SecretStore();
-        store = SecretStore(address(new ERC1967Proxy(
+        proxy = new ERC1967Proxy(
             address(implementation),
-            abi.encodeWithSelector(SecretStore.initialize.selector)
-        )));
+            abi.encodeCall(SecretStore.initialize, (address(this)))
+        );
+        store = SecretStore(address(proxy));
 
         // Grant roles
         store.grantRole(store.UPGRADER_ROLE(), admin);
@@ -45,8 +47,8 @@ contract SecretStoreUpgradeTest is Test {
     /// @notice Test proper initialization
     /// @dev Verifies that initialize can only be called once
     function testCannotInitializeTwice() public {
-        vm.expectRevert(abi.encodeWithSelector(Initializable.InvalidInitialization.selector));
-        store.initialize();
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        store.initialize(address(this));
     }
 
     /// @notice Test upgrade authorization
@@ -74,7 +76,7 @@ contract SecretStoreUpgradeTest is Test {
     /// @notice Test upgrade with invalid implementation
     /// @dev Verifies that zero address implementations are rejected
     function testCannotUpgradeToZeroAddress() public {
-        vm.expectRevert(bytes("Invalid implementation address"));
+        vm.expectRevert("Invalid implementation address");
         store.upgradeToAndCall(address(0), "");
     }
 

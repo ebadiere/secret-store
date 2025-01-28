@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IERC1967} from "@openzeppelin/contracts/interfaces/IERC1967.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 interface IUpgradeableProxy {
     function upgradeTo(address newImplementation) external;
@@ -38,11 +39,10 @@ contract SecretStoreTest is Test {
     /// @notice Setup function run before each test
     /// @dev Creates a fresh contract instance and sets up test accounts
     function setUp() public {
-        // Deploy implementation and proxy
-        SecretStore implementation = new SecretStore();
+        store = new SecretStore();
         ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation),
-            abi.encodeCall(SecretStore.initialize, ())
+            address(store),
+            abi.encodeCall(SecretStore.initialize, (address(this)))
         );
         store = SecretStore(address(proxy));
 
@@ -115,10 +115,8 @@ contract SecretStoreTest is Test {
         vm.expectEmit(true, true, true, true);
         emit SecretStore.SecretRevealed(
             TEST_SECRET_HASH,
-            TEST_SECRET,
             partyA,
-            block.timestamp,
-            block.number
+            TEST_SECRET
         );
 
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
@@ -141,10 +139,8 @@ contract SecretStoreTest is Test {
         vm.expectEmit(true, true, true, true);
         emit SecretStore.SecretRevealed(
             TEST_SECRET_HASH,
-            TEST_SECRET,
             partyB,
-            block.timestamp,
-            block.number
+            TEST_SECRET
         );
 
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
