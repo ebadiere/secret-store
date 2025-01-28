@@ -37,6 +37,30 @@ contract SecretStoreFuzzTest is Test {
         partyB = vm.addr(PARTY_B_PRIVATE_KEY);
     }
 
+    /// @notice Helper function to create the secret hash
+    function _createSecretHash(string memory secret, bytes32 salt) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(secret, salt));
+    }
+
+    /// @notice Helper function to create signatures for a secret hash
+    function _createSignatures(bytes32 secretHash) internal returns (bytes memory, bytes memory) {
+        bytes32 structHash = keccak256(abi.encode(TYPEHASH, secretHash, partyA, partyB));
+        bytes32 digest = MessageHashUtils.toTypedDataHash(secretStore.DOMAIN_SEPARATOR(), structHash);
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
+
+        return (
+            abi.encodePacked(r1, s1, v1),
+            abi.encodePacked(r2, s2, v2)
+        );
+    }
+
+    /// @notice Helper function to register a secret
+    function _registerSecret(bytes32 secretHash, bytes memory sigA, bytes memory sigB) internal {
+        secretStore.registerSecret(secretHash, partyA, partyB, sigA, sigB);
+    }
+
     /// @notice Fuzz test for registering secrets with random inputs
     /// @dev Tests the secret registration flow with randomly generated:
     ///      - salt values (for secret hashing)
@@ -57,45 +81,9 @@ contract SecretStoreFuzzTest is Test {
         vm.assume(bytes(secret).length > 0);
         vm.assume(timestamp > block.timestamp);
         
-        // Step 1: Create the secret hash that will be signed
-        // This combines the secret and salt to create a unique identifier
-        bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
-
-        // Step 2: Create the EIP-712 structured data hash
-        // This follows EIP-712 standard for structured data:
-        // - TYPEHASH ensures type safety
-        // - Parameters are ABI encoded in specific order
-        bytes32 structHash = keccak256(abi.encode(
-            TYPEHASH,    // Agreement(bytes32 secretHash,address partyA,address partyB)
-            secretHash,  // Hash of secret+salt
-            partyA,     // First party's address
-            partyB      // Second party's address
-        ));
-
-        // Step 3: Create the final EIP-712 digest
-        // Combines domain separator with struct hash to create final message
-        // Domain separator prevents cross-chain/cross-contract replay attacks
-        bytes32 digest = MessageHashUtils.toTypedDataHash(
-            secretStore.DOMAIN_SEPARATOR(),  // Includes chainId, contract address, etc.
-            structHash                       // Our typed data hash from step 2
-        );
-
-        // Step 4: Generate EIP-712 signatures from both parties
-        // Each party signs the same digest with their private key
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
-
-        // Step 5: Pack the signatures into the format expected by the contract
-        // Concatenate r, s, v components into a single bytes array
-        bytes memory sigA = abi.encodePacked(r1, s1, v1);
-        bytes memory sigB = abi.encodePacked(r2, s2, v2);
-
-        // Step 6: Call the contract which will verify these signatures
-        // Contract will:
-        // - Reconstruct the same digest
-        // - Recover signer addresses from signatures
-        // - Verify they match partyA and partyB
-        secretStore.registerSecret(secretHash, partyA, partyB, sigA, sigB);
+        bytes32 secretHash = _createSecretHash(secret, salt);
+        (bytes memory sigA, bytes memory sigB) = _createSignatures(secretHash);
+        _registerSecret(secretHash, sigA, sigB);
     }
 
     /// @notice Fuzz test for revealing secrets with random inputs and random revealer
@@ -120,19 +108,9 @@ contract SecretStoreFuzzTest is Test {
         vm.assume(bytes(secret).length > 0);
         vm.assume(timestamp > block.timestamp);
         
-        bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
-
-        // First register the secret
-        bytes32 structHash = keccak256(abi.encode(TYPEHASH, secretHash, partyA, partyB));
-        bytes32 digest = MessageHashUtils.toTypedDataHash(secretStore.DOMAIN_SEPARATOR(), structHash);
-
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
-
-        bytes memory sigA = abi.encodePacked(r1, s1, v1);
-        bytes memory sigB = abi.encodePacked(r2, s2, v2);
-
-        secretStore.registerSecret(secretHash, partyA, partyB, sigA, sigB);
+        bytes32 secretHash = _createSecretHash(secret, salt);
+        (bytes memory sigA, bytes memory sigB) = _createSignatures(secretHash);
+        _registerSecret(secretHash, sigA, sigB);
 
         // Now reveal the secret
         if (usePartyB) {
@@ -159,28 +137,20 @@ contract SecretStoreFuzzTest is Test {
     function testFuzz_RevealSecretWithInvalidInputs(
         bytes32 salt,
         uint256 timestamp,
-        string memory secret,
-        string memory wrongSecret
+        string calldata secret,
+        string calldata wrongSecret
     ) public {
         vm.assume(bytes(secret).length > 0);
         vm.assume(bytes(wrongSecret).length > 0);
         vm.assume(keccak256(bytes(secret)) != keccak256(bytes(wrongSecret)));
         vm.assume(timestamp > block.timestamp);
         
-        bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
-        bytes32 wrongSecretHash = keccak256(abi.encodePacked(wrongSecret, salt));
+        bytes32 secretHash = _createSecretHash(secret, salt);
+        bytes32 wrongSecretHash = _createSecretHash(wrongSecret, salt);
 
-        // First register the secret
-        bytes32 structHash = keccak256(abi.encode(TYPEHASH, secretHash, partyA, partyB));
-        bytes32 digest = MessageHashUtils.toTypedDataHash(secretStore.DOMAIN_SEPARATOR(), structHash);
-
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
-
-        bytes memory sigA = abi.encodePacked(r1, s1, v1);
-        bytes memory sigB = abi.encodePacked(r2, s2, v2);
-
-        secretStore.registerSecret(secretHash, partyA, partyB, sigA, sigB);
+        // Register the secret
+        (bytes memory sigA, bytes memory sigB) = _createSignatures(secretHash);
+        _registerSecret(secretHash, sigA, sigB);
 
         // Try to reveal with wrong secret
         vm.expectRevert("Invalid secret or salt");
@@ -193,9 +163,8 @@ contract SecretStoreFuzzTest is Test {
         secretStore.revealSecret(secret, salt, wrongSecretHash);
 
         // Try to reveal with wrong salt
-        bytes32 wrongSalt = bytes32(uint256(salt) + 1);
         vm.expectRevert("Invalid secret or salt");
         vm.prank(partyA);
-        secretStore.revealSecret(secret, wrongSalt, secretHash);
+        secretStore.revealSecret(secret, bytes32(uint256(salt) + 1), secretHash);
     }
 }
