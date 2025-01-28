@@ -427,6 +427,57 @@ contract SecretStoreTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Test that invalid signatures are rejected
+    /// @dev Verifies that signatures must be from the correct parties
+    function testCannotRegisterWithInvalidSignatures() public {
+        // Create signatures but swap them (partyA signs for partyB and vice versa)
+        bytes32 structHash = keccak256(
+            abi.encode(
+                store.TYPEHASH(),
+                TEST_SECRET_HASH,
+                partyA,
+                partyB
+            )
+        );
+        bytes32 digest = MessageHashUtils.toTypedDataHash(
+            store.DOMAIN_SEPARATOR(),
+            structHash
+        );
+
+        // First test: invalid partyA signature
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(0x9999, digest); // random address signs
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest); // partyB signs correctly
+
+        bytes memory invalidSigA = abi.encodePacked(r1, s1, v1);
+        bytes memory validSigB = abi.encodePacked(r2, s2, v2);
+
+        // Try to register with invalid partyA signature
+        vm.expectRevert("Invalid signature from partyA");
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, invalidSigA, validSigB);
+
+        // Second test: swapped signatures
+        (v1, r1, s1) = vm.sign(PARTY_B_PRIVATE_KEY, digest); // partyB signs
+        (v2, r2, s2) = vm.sign(PARTY_A_PRIVATE_KEY, digest); // partyA signs
+
+        bytes memory wrongSigA = abi.encodePacked(r1, s1, v1); // Using partyB's signature for partyA
+        bytes memory wrongSigB = abi.encodePacked(r2, s2, v2); // Using partyA's signature for partyB
+
+        // Try to register with wrong signatures
+        vm.expectRevert("Invalid signature from partyA");
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, wrongSigA, wrongSigB);
+
+        // Third test: valid partyA but invalid partyB signature
+        (v1, r1, s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest); // partyA signs correctly
+        (v2, r2, s2) = vm.sign(0x8888, digest); // different random address signs
+
+        bytes memory validSigA = abi.encodePacked(r1, s1, v1);
+        bytes memory invalidSigB = abi.encodePacked(r2, s2, v2);
+
+        // Try to register with invalid partyB signature
+        vm.expectRevert("Invalid signature from partyB");
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, validSigA, invalidSigB);
+    }
+
     /// @notice Helper to format AccessControl error message
     /// @dev Creates the expected error message for role-based access control
     function accessControlError(address account, bytes32 role) internal pure returns (bytes memory) {

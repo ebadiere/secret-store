@@ -36,6 +36,7 @@ contract SecretStore is
 
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant TYPEHASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
 
     // EIP-712 type hashes
     bytes32 private constant DOMAIN_TYPE_HASH =
