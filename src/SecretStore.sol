@@ -11,6 +11,9 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 
 /// @title SecretStore
 /// @notice A contract for securely storing and revealing secrets between two parties
+/// @dev This contract implements a secure way to store and reveal secrets between two consenting parties.
+///      Each agreement is recorded with its block number to provide on-chain proof of when parties agreed.
+/// @custom:security-contact security@yourproject.com
 contract SecretStore is
     Initializable,
     UUPSUpgradeable,
@@ -27,27 +30,40 @@ contract SecretStore is
 
     // Structs
     struct Agreement {
-        bytes32 secretHash;
         address partyA;
         address partyB;
         uint256 timestamp;
+        uint256 blockNumber;
     }
 
     // State variables
     mapping(bytes32 => Agreement) public agreements;
 
     // Events
+    /// @notice Emitted when a new secret agreement is registered
+    /// @param partyA The address of the first participant
+    /// @param partyB The address of the second participant
+    /// @param secretHash The hash of the secret
+    /// @param blockNumber The block number when the agreement was registered
     event SecretRegistered(
         address indexed partyA,
         address indexed partyB,
-        bytes32 secretHash
+        bytes32 indexed secretHash,
+        uint256 blockNumber
     );
 
+    /// @notice Emitted when a secret is revealed by one of the parties
+    /// @param secretHash The hash that was used to store the secret
+    /// @param revealer The address of the party revealing the secret
+    /// @param secret The revealed secret string
+    /// @param registeredBlockNumber The block number when the agreement was registered
+    /// @param revealedBlockNumber The block number when the secret was revealed
     event SecretRevealed(
-        bytes32 indexed agreementId,
+        bytes32 indexed secretHash,
         address indexed revealer,
         string secret,
-        bytes salt
+        uint256 registeredBlockNumber,
+        uint256 revealedBlockNumber
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -55,8 +71,9 @@ contract SecretStore is
         _disableInitializers();
     }
 
-    /// @notice Initialize the contract
-    /// @param owner Address that will have admin rights
+    /// @notice Initialize the contract with the initial admin
+    /// @dev Sets up the contract with required roles and initializes inherited contracts
+    /// @param owner Address that will have admin, pauser, and upgrader roles
     function initialize(address owner) public initializer {
         __UUPSUpgradeable_init();
         __AccessControl_init();
@@ -68,12 +85,14 @@ contract SecretStore is
         _grantRole(UPGRADER_ROLE, owner);
     }
 
-    /// @notice Register a new secret agreement
-    /// @param secretHash Hash of the secret with salt
-    /// @param partyA First participant address
-    /// @param partyB Second participant address
-    /// @param signatureA Signature from partyA
-    /// @param signatureB Signature from partyB
+    /// @notice Register a new secret agreement between two parties
+    /// @dev Both parties must sign the secretHash. The secret should be hashed off-chain.
+    ///      The agreement is stored with the current block number for timing verification.
+    /// @param secretHash Hash of the secret (keccak256(abi.encodePacked(secret)))
+    /// @param partyA Address of the first participant
+    /// @param partyB Address of the second participant
+    /// @param signatureA EIP-712 signature from partyA
+    /// @param signatureB EIP-712 signature from partyB
     function registerSecret(
         bytes32 secretHash,
         address partyA,
@@ -81,8 +100,7 @@ contract SecretStore is
         bytes memory signatureA,
         bytes memory signatureB
     ) external whenNotPaused nonReentrant {
-        bytes32 messageHash = getMessageHash(secretHash, partyA, partyB);
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        bytes32 ethSignedMessageHash = secretHash.toEthSignedMessageHash();
         
         require(
             ethSignedMessageHash.recover(signatureA) == partyA,
@@ -93,66 +111,63 @@ contract SecretStore is
             "Invalid signature from partyB"
         );
 
-        bytes32 agreementId = keccak256(
-            abi.encodePacked(secretHash, partyA, partyB, block.timestamp)
-        );
-
-        agreements[agreementId] = Agreement({
-            secretHash: secretHash,
+        agreements[secretHash] = Agreement({
             partyA: partyA,
             partyB: partyB,
-            timestamp: block.timestamp
+            timestamp: block.timestamp,
+            blockNumber: block.number
         });
 
-        emit SecretRegistered(partyA, partyB, secretHash);
+        emit SecretRegistered(partyA, partyB, secretHash, block.number);
     }
 
     /// @notice Reveal a previously registered secret
-    /// @param secret The original secret
-    /// @param salt The salt used in the hash
-    /// @param agreementId The ID of the agreement
+    /// @dev Only participants of the agreement can reveal the secret. Agreement is deleted after revelation.
+    ///      Both the registration and revelation block numbers are included in the emitted event.
+    /// @param secret The original secret string
+    /// @param secretHash The hash of the secret used in registration
     function revealSecret(
         string memory secret,
-        bytes memory salt,
-        bytes32 agreementId
+        bytes32 secretHash
     ) external whenNotPaused nonReentrant {
-        Agreement memory agreement = agreements[agreementId];
+        Agreement memory agreement = agreements[secretHash];
         require(
             msg.sender == agreement.partyA || msg.sender == agreement.partyB,
             "Only participants can reveal"
         );
 
-        bytes32 computedHash = keccak256(abi.encodePacked(secret, salt));
-        require(computedHash == agreement.secretHash, "Invalid secret or salt");
+        require(
+            keccak256(abi.encodePacked(secret)) == secretHash,
+            "Invalid secret"
+        );
 
-        delete agreements[agreementId];
+        uint256 registeredBlockNumber = agreement.blockNumber;
+        delete agreements[secretHash];
 
-        emit SecretRevealed(agreementId, msg.sender, secret, salt);
+        emit SecretRevealed(
+            secretHash,
+            msg.sender,
+            secret,
+            registeredBlockNumber,
+            block.number
+        );
     }
 
-    /// @notice Get message hash for signing
-    /// @param secretHash Hash of the secret with salt
-    /// @param partyA First participant address
-    /// @param partyB Second participant address
-    function getMessageHash(
-        bytes32 secretHash,
-        address partyA,
-        address partyB
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(secretHash, partyA, partyB));
-    }
-
-    /// @notice Pause the contract
+    /// @notice Pause all contract operations
+    /// @dev Only callable by accounts with PAUSER_ROLE
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    /// @notice Unpause the contract
+    /// @notice Unpause all contract operations
+    /// @dev Only callable by accounts with PAUSER_ROLE
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 
-    /// @notice Implementation of UUPS authorization
+    /// @notice Authorizes an upgrade to a new implementation
+    /// @dev Only callable by accounts with UPGRADER_ROLE. Part of UUPS pattern
+    /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(address newImplementation)
         internal
         override

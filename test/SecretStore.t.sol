@@ -21,21 +21,22 @@ contract SecretStoreTest is Test {
 
     // Test data
     string constant TEST_SECRET = "my secret message";
-    bytes constant TEST_SALT = "random salt";
     bytes32 secretHash;
 
     // Events
     event SecretRegistered(
         address indexed partyA,
         address indexed partyB,
-        bytes32 secretHash
+        bytes32 indexed secretHash,
+        uint256 blockNumber
     );
 
     event SecretRevealed(
-        bytes32 indexed agreementId,
+        bytes32 indexed secretHash,
         address indexed revealer,
         string secret,
-        bytes salt
+        uint256 registeredBlockNumber,
+        uint256 revealedBlockNumber
     );
 
     function setUp() public {
@@ -48,8 +49,8 @@ contract SecretStoreTest is Test {
             abi.encodeWithSelector(SecretStore.initialize.selector, owner)
         ))));
 
-        // Pre-calculate secret hash
-        secretHash = keccak256(abi.encodePacked(TEST_SECRET, TEST_SALT));
+        // Calculate secret hash (this would normally be done off-chain)
+        secretHash = keccak256(abi.encodePacked(TEST_SECRET));
     }
 
     function testInitialization() public {
@@ -59,12 +60,15 @@ contract SecretStoreTest is Test {
     }
 
     function testRegisterSecret() public {
-        // Create signatures
-        bytes32 messageHash = store.getMessageHash(secretHash, partyA, partyB);
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(messageHash);
+        // Sign the secret hash (this would normally be done off-chain)
+        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(secretHash);
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(partyAKey, ethSignedHash);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(partyBKey, ethSignedHash);
+        bytes memory signatureA = abi.encodePacked(r1, s1, v1);
+        bytes memory signatureB = abi.encodePacked(r2, s2, v2);
 
         vm.expectEmit(true, true, true, true);
-        emit SecretRegistered(partyA, partyB, secretHash);
+        emit SecretRegistered(partyA, partyB, secretHash, block.number);
 
         store.registerSecret(
             secretHash,
@@ -73,71 +77,84 @@ contract SecretStoreTest is Test {
             signatureA,
             signatureB
         );
+
+        // Verify agreement storage
+        (
+            address storedPartyA,
+            address storedPartyB,
+            uint256 timestamp,
+            uint256 blockNumber
+        ) = store.agreements(secretHash);
+        assertEq(storedPartyA, partyA);
+        assertEq(storedPartyB, partyB);
+        assertEq(timestamp, block.timestamp);
+        assertEq(blockNumber, block.number);
     }
 
     function testRevealSecret() public {
         // First register a secret
-        bytes32 messageHash = store.getMessageHash(secretHash, partyA, partyB);
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(messageHash);
+        testRegisterSecret();
 
-        store.registerSecret(
-            secretHash,
-            partyA,
-            partyB,
-            signatureA,
-            signatureB
-        );
+        uint256 registeredBlock = block.number;
+        vm.roll(block.number + 1); // Move to next block for revelation
 
-        // Get the agreementId
-        bytes32 agreementId = keccak256(abi.encodePacked(secretHash, partyA, partyB, block.timestamp));
-
-        // Try to reveal as partyA
-        vm.prank(partyA);
         vm.expectEmit(true, true, true, true);
-        emit SecretRevealed(agreementId, partyA, TEST_SECRET, TEST_SALT);
-
-        store.revealSecret(TEST_SECRET, TEST_SALT, agreementId);
-    }
-
-    function testFailRevealWrongSecret() public {
-        // First register a secret
-        bytes32 messageHash = store.getMessageHash(secretHash, partyA, partyB);
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(messageHash);
-
-        store.registerSecret(
+        emit SecretRevealed(
             secretHash,
             partyA,
-            partyB,
-            signatureA,
-            signatureB
+            TEST_SECRET,
+            registeredBlock,
+            block.number
         );
 
-        bytes32 agreementId = keccak256(abi.encodePacked(secretHash, partyA, partyB, block.timestamp));
-
-        // Try to reveal with wrong secret
+        // Reveal from partyA
         vm.prank(partyA);
-        store.revealSecret("wrong secret", TEST_SALT, agreementId);
+        store.revealSecret(TEST_SECRET, secretHash);
+
+        // Verify agreement is deleted
+        (address storedPartyA, address storedPartyB,,) = store.agreements(secretHash);
+        assertEq(storedPartyA, address(0));
+        assertEq(storedPartyB, address(0));
     }
 
-    function testFailRevealWrongParty() public {
+    function testRevealSecretByPartyB() public {
         // First register a secret
-        bytes32 messageHash = store.getMessageHash(secretHash, partyA, partyB);
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(messageHash);
+        testRegisterSecret();
 
-        store.registerSecret(
+        uint256 registeredBlock = block.number;
+        vm.roll(block.number + 1); // Move to next block for revelation
+
+        vm.expectEmit(true, true, true, true);
+        emit SecretRevealed(
             secretHash,
-            partyA,
             partyB,
-            signatureA,
-            signatureB
+            TEST_SECRET,
+            registeredBlock,
+            block.number
         );
 
-        bytes32 agreementId = keccak256(abi.encodePacked(secretHash, partyA, partyB, block.timestamp));
+        // Reveal from partyB
+        vm.prank(partyB);
+        store.revealSecret(TEST_SECRET, secretHash);
+    }
 
-        // Try to reveal as non-participant
-        address nonParticipant = address(4);
+    function testCannotRevealWithWrongSecret() public {
+        // First register a secret
+        testRegisterSecret();
+
+        vm.prank(partyA);
+        vm.expectRevert("Invalid secret");
+        store.revealSecret("wrong secret", secretHash);
+    }
+
+    function testCannotRevealByNonParticipant() public {
+        // First register a secret
+        testRegisterSecret();
+
+        address nonParticipant = makeAddr("nonParticipant");
         vm.prank(nonParticipant);
-        store.revealSecret(TEST_SECRET, TEST_SALT, agreementId);
+        vm.expectRevert("Only participants can reveal");
+        store.revealSecret(TEST_SECRET, secretHash);
     }
 
     // Helper functions
