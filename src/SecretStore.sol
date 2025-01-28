@@ -18,11 +18,12 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///      - Uses OpenZeppelin's ECDSA library for secure signature verification
 /// @custom:security Important security notes:
 ///      1. Agreement existence is checked using partyA address. A zero address for
-///         partyA indicates no agreement exists. This check is crucial because
-///         Solidity mappings return default values for non-existent keys, which
-///         could lead to unauthorized access if not properly checked.
-///      2. Agreements are completely deleted after revelation to prevent reuse
-///      3. Salt is required to prevent rainbow table attacks on common secrets
+///         partyA indicates no agreement exists.
+///      2. The contract is upgradeable using UUPS pattern:
+///         - Only UPGRADER_ROLE can perform upgrades
+///         - State is preserved across upgrades via proxy storage
+///         - Initialization can only happen once on the proxy
+///         - New implementations must maintain storage layout compatibility
 contract SecretStore is
     Initializable,
     UUPSUpgradeable,
@@ -88,14 +89,26 @@ contract SecretStore is
         address indexed deletedBy
     );
 
+    /// @notice Gap for adding new storage variables in upgrades
+    /// @dev This gap is reserved for future storage variables to prevent collisions
+    /// @custom:security This gap should be reduced when adding new storage variables
+    /// @custom:security When adding new storage variables:
+    /// 1. Add them after existing variables but before this gap
+    /// 2. Reduce the gap size by the number of slots used
+    /// 3. Create a new reinitializer function if initialization is needed
+    uint256[50] private __gap;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
     constructor() {
         _disableInitializers();
     }
 
-    /// @notice Initializes the contract with proper EIP-712 domain separator
-    /// @dev Sets up roles and initializes the domain separator with contract-specific data
-    function initialize() public initializer {
+    /// @notice Initialize the contract with default admin
+    /// @dev Sets up roles and domain separator. Can only be called once through the proxy.
+    /// @custom:security This function can only be called once due to initializer modifier
+    /// @custom:security For new state variables added in upgrades, create a new function with reinitializer(N)
+    function initialize() external initializer {
         __AccessControl_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
@@ -105,6 +118,7 @@ contract SecretStore is
         _grantRole(PAUSER_ROLE, msg.sender);
         _grantRole(UPGRADER_ROLE, msg.sender);
 
+        // Initialize domain separator
         _DOMAIN_SEPARATOR = keccak256(
             abi.encode(
                 DOMAIN_TYPE_HASH,
@@ -271,21 +285,35 @@ contract SecretStore is
 
     // Admin functions
 
-    /// @notice Pauses all contract operations
+    /// @notice Authorize an upgrade to a new implementation
+    /// @dev Can only be called by the upgrader role through the proxy's upgradeToAndCall
+    /// @param newImplementation Address of the new implementation contract
+    /// @custom:security Critical function that controls contract upgrades
+    /// @custom:security Ensure the new implementation:
+    /// 1. Is a valid contract address
+    /// 2. Maintains storage layout compatibility
+    /// 3. Preserves existing roles and permissions
+    /// 4. Does not introduce storage collisions
+    /// 5. Implements UUPS interface correctly
+    /// 6. Uses reinitializer(N) for any new initialization
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(UPGRADER_ROLE)
+    {
+        require(newImplementation != address(0), "Invalid implementation address");
+        // Additional checks can be added here in future upgrades
+    }
+
+    /// @notice Pause all contract operations
     /// @dev Can only be called by accounts with PAUSER_ROLE
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    /// @notice Unpauses all contract operations
+    /// @notice Unpause contract operations
     /// @dev Can only be called by accounts with PAUSER_ROLE
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
     }
-
-    /// @notice Function that authorizes upgrades
-    /// @dev Can only be called by accounts with UPGRADER_ROLE
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyRole(UPGRADER_ROLE) {}
 }
