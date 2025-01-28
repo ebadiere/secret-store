@@ -11,9 +11,11 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 
 /// @title SecretStore
 /// @notice A contract for securely storing and revealing secrets between two parties
-/// @dev This contract implements a secure way to store and reveal secrets between two consenting parties.
-///      Each agreement is recorded with its block number to provide on-chain proof of when parties agreed.
-/// @custom:security-contact security@yourproject.com
+/// @dev Uses EIP-712 for typed signatures with robust replay protection:
+///      - Domain separator includes contract name, version, chain ID, and address
+///      - Signatures are bound to specific parties and cannot be reused
+///      - Agreements are deleted after reveal to prevent reuse
+///      - Uses OpenZeppelin's ECDSA library for secure signature verification
 contract SecretStore is
     Initializable,
     UUPSUpgradeable,
@@ -24,46 +26,48 @@ contract SecretStore is
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
-    // Roles
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
-    // Structs
+    // EIP-712 type hashes
+    bytes32 private constant DOMAIN_TYPE_HASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant AGREEMENT_TYPE_HASH =
+        keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
+    
+    // EIP-712 domain separator
+    bytes32 private _DOMAIN_SEPARATOR;
+    string private constant SIGNING_DOMAIN = "SecretStore";
+    string private constant SIGNING_VERSION = "1";
+
+    /// @notice Represents an agreement between two parties about a secret
+    /// @dev The agreement is deleted when the secret is revealed
     struct Agreement {
         address partyA;
         address partyB;
         uint256 timestamp;
         uint256 blockNumber;
+        bool isRevealed;
     }
 
-    // State variables
+    // secretHash => Agreement
     mapping(bytes32 => Agreement) public agreements;
 
     // Events
-    /// @notice Emitted when a new secret agreement is registered
-    /// @param partyA The address of the first participant
-    /// @param partyB The address of the second participant
-    /// @param secretHash The hash of the secret
-    /// @param blockNumber The block number when the agreement was registered
     event SecretRegistered(
+        bytes32 indexed secretHash,
         address indexed partyA,
         address indexed partyB,
-        bytes32 indexed secretHash,
+        uint256 timestamp,
         uint256 blockNumber
     );
 
-    /// @notice Emitted when a secret is revealed by one of the parties
-    /// @param secretHash The hash that was used to store the secret
-    /// @param revealer The address of the party revealing the secret
-    /// @param secret The revealed secret string
-    /// @param registeredBlockNumber The block number when the agreement was registered
-    /// @param revealedBlockNumber The block number when the secret was revealed
     event SecretRevealed(
         bytes32 indexed secretHash,
-        address indexed revealer,
         string secret,
-        uint256 registeredBlockNumber,
-        uint256 revealedBlockNumber
+        address indexed revealer,
+        uint256 timestamp,
+        uint256 blockNumber
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -71,43 +75,74 @@ contract SecretStore is
         _disableInitializers();
     }
 
-    /// @notice Initialize the contract with the initial admin
-    /// @dev Sets up the contract with required roles and initializes inherited contracts
-    /// @param owner Address that will have admin, pauser, and upgrader roles
-    function initialize(address owner) public initializer {
-        __UUPSUpgradeable_init();
+    /// @notice Initializes the contract with proper EIP-712 domain separator
+    /// @dev Sets up roles and initializes the domain separator with contract-specific data
+    function initialize() public initializer {
         __AccessControl_init();
         __Pausable_init();
+        __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, owner);
-        _grantRole(PAUSER_ROLE, owner);
-        _grantRole(UPGRADER_ROLE, owner);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(PAUSER_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+
+        _DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                DOMAIN_TYPE_HASH,
+                keccak256(bytes(SIGNING_DOMAIN)),
+                keccak256(bytes(SIGNING_VERSION)),
+                block.chainid,
+                address(this)
+            )
+        );
     }
 
-    /// @notice Register a new secret agreement between two parties
-    /// @dev Both parties must sign the secretHash. The secret should be hashed off-chain.
-    ///      The agreement is stored with the current block number for timing verification.
-    /// @param secretHash Hash of the secret (keccak256(abi.encodePacked(secret)))
-    /// @param partyA Address of the first participant
-    /// @param partyB Address of the second participant
+    /// @notice Register a secret with signatures from both parties
+    /// @dev Uses EIP-712 for typed signatures to prevent replay attacks
+    /// @param secretHash Hash of the secret
+    /// @param partyA First party's address
+    /// @param partyB Second party's address
     /// @param signatureA EIP-712 signature from partyA
     /// @param signatureB EIP-712 signature from partyB
+    /// @custom:security Signatures are bound to this specific contract and chain
+    /// through the domain separator. Each secret can only be registered once.
     function registerSecret(
         bytes32 secretHash,
         address partyA,
         address partyB,
-        bytes memory signatureA,
-        bytes memory signatureB
+        bytes calldata signatureA,
+        bytes calldata signatureB
     ) external whenNotPaused nonReentrant {
-        bytes32 ethSignedMessageHash = secretHash.toEthSignedMessageHash();
+        require(secretHash != bytes32(0), "Invalid secret hash");
+        require(partyA != address(0), "Invalid party A address");
+        require(partyB != address(0), "Invalid party B address");
+        require(partyA != partyB, "Parties must be different");
+        require(agreements[secretHash].partyA == address(0), "Secret already registered");
+
+        // Verify signatures using EIP-712
+        bytes32 structHash = keccak256(
+            abi.encode(
+                AGREEMENT_TYPE_HASH,
+                secretHash,
+                partyA,
+                partyB
+            )
+        );
+        bytes32 hash = _hashTypedDataV4(structHash);
         
+        address recoveredA = hash.recover(signatureA);
+        address recoveredB = hash.recover(signatureB);
+
+        emit Debug_Signature(structHash, hash, recoveredA, partyA);
+        emit Debug_Signature(structHash, hash, recoveredB, partyB);
+
         require(
-            ethSignedMessageHash.recover(signatureA) == partyA,
+            recoveredA == partyA,
             "Invalid signature from partyA"
         );
         require(
-            ethSignedMessageHash.recover(signatureB) == partyB,
+            recoveredB == partyB,
             "Invalid signature from partyB"
         );
 
@@ -115,62 +150,80 @@ contract SecretStore is
             partyA: partyA,
             partyB: partyB,
             timestamp: block.timestamp,
-            blockNumber: block.number
+            blockNumber: block.number,
+            isRevealed: false
         });
 
-        emit SecretRegistered(partyA, partyB, secretHash, block.number);
+        emit SecretRegistered(
+            secretHash,
+            partyA,
+            partyB,
+            block.timestamp,
+            block.number
+        );
     }
 
     /// @notice Reveal a previously registered secret
-    /// @dev Only participants of the agreement can reveal the secret. Agreement is deleted after revelation.
-    ///      Both the registration and revelation block numbers are included in the emitted event.
-    /// @param secret The original secret string
-    /// @param secretHash The hash of the secret used in registration
+    /// @dev Only participants can reveal. Agreement is deleted after reveal to prevent reuse.
+    /// @param secret The actual secret in clear text
+    /// @param secretHash Hash of the secret
     function revealSecret(
         string memory secret,
         bytes32 secretHash
     ) external whenNotPaused nonReentrant {
-        Agreement memory agreement = agreements[secretHash];
+        Agreement storage agreement = agreements[secretHash];
         require(
             msg.sender == agreement.partyA || msg.sender == agreement.partyB,
             "Only participants can reveal"
         );
-
+        require(!agreement.isRevealed, "Secret already revealed");
         require(
             keccak256(abi.encodePacked(secret)) == secretHash,
             "Invalid secret"
         );
 
-        uint256 registeredBlockNumber = agreement.blockNumber;
-        delete agreements[secretHash];
-
         emit SecretRevealed(
             secretHash,
-            msg.sender,
             secret,
-            registeredBlockNumber,
+            msg.sender,
+            block.timestamp,
             block.number
         );
+
+        delete agreements[secretHash];
     }
 
-    /// @notice Pause all contract operations
-    /// @dev Only callable by accounts with PAUSER_ROLE
+    /// @notice Returns the domain separator used in EIP-712 signatures
+    /// @dev Domain separator includes contract name, version, chain ID, and address
+    /// @return bytes32 The domain separator
+    function DOMAIN_SEPARATOR() external view returns (bytes32) {
+        return _DOMAIN_SEPARATOR;
+    }
+
+    /// @dev Returns the hash of typed data for EIP-712 signatures
+    /// @param structHash The hash of the struct being signed
+    /// @return bytes32 The final hash to be signed
+    function _hashTypedDataV4(bytes32 structHash) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", _DOMAIN_SEPARATOR, structHash));
+    }
+
+    // Admin functions
+
+    /// @notice Pauses all contract operations
+    /// @dev Can only be called by accounts with PAUSER_ROLE
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    /// @notice Unpause all contract operations
-    /// @dev Only callable by accounts with PAUSER_ROLE
+    /// @notice Unpauses all contract operations
+    /// @dev Can only be called by accounts with PAUSER_ROLE
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 
-    /// @notice Authorizes an upgrade to a new implementation
-    /// @dev Only callable by accounts with UPGRADER_ROLE. Part of UUPS pattern
-    /// @param newImplementation Address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        onlyRole(UPGRADER_ROLE)
-    {}
+    /// @notice Function that authorizes upgrades
+    /// @dev Can only be called by accounts with UPGRADER_ROLE
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyRole(UPGRADER_ROLE) {}
 }
