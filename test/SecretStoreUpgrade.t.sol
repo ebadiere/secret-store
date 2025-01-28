@@ -113,10 +113,10 @@ contract SecretStoreUpgradeTest is Test {
         SecretStore newImplementation = new SecretStore();
         store.upgradeToAndCall(address(newImplementation), "");
         
-        // Verify state is preserved
-        (address storedPartyA, address storedPartyB) = _getParties(secretHash);
-        assertEq(storedPartyA, partyA, "Agreement state should be preserved");
-        assertEq(storedPartyB, partyB, "Agreement state should be preserved");
+        // Verify agreement storage after upgrade
+        (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
+        assertEq(storedPartyA, partyA, "PartyA not preserved after upgrade");
+        assertEq(storedPartyB, partyB, "PartyB not preserved after upgrade");
         
         // Verify roles are preserved
         assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), admin));
@@ -127,7 +127,36 @@ contract SecretStoreUpgradeTest is Test {
     /// @notice Helper function to get parties from an agreement
     /// @dev Extracts party addresses from the agreement mapping
     function _getParties(bytes32 secretHash) internal view returns (address, address) {
-        (address storedPartyA, address storedPartyB, , , ) = store.agreements(secretHash);
+        (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
         return (storedPartyA, storedPartyB);
+    }
+
+    /// @notice Helper function to create EIP-712 signatures
+    /// @dev Creates signatures for both parties using their private keys
+    /// @param secretHash Hash of the secret and salt
+    /// @return signatureA PartyA's signature
+    /// @return signatureB PartyB's signature
+    function _createSignaturesHelper(bytes32 secretHash) internal view returns (bytes memory signatureA, bytes memory signatureB) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                AGREEMENT_TYPE_HASH,
+                secretHash,
+                partyA,
+                partyB
+            )
+        );
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                store.DOMAIN_SEPARATOR(),
+                structHash
+            )
+        );
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_KEY, digest);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_KEY, digest);
+        signatureA = abi.encodePacked(r1, s1, v1);
+        signatureB = abi.encodePacked(r2, s2, v2);
     }
 }

@@ -52,7 +52,7 @@ contract SecretStoreTest is Test {
     }
 
     /// @notice Test initialization of the contract
-    /// @dev Verifies that the contract is initialized correctly
+    /// @dev Verifies that the contract is initialized correctly with proper roles
     function testInitialization() public {
         assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(this)));
         assertTrue(store.hasRole(store.PAUSER_ROLE(), address(this)));
@@ -61,6 +61,7 @@ contract SecretStoreTest is Test {
 
     /// @notice Test basic secret registration functionality
     /// @dev Verifies that a secret can be registered with valid signatures
+    /// @custom:security Verifies proper EIP-712 signature validation
     function testRegisterSecret() public {
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
         
@@ -75,7 +76,7 @@ contract SecretStoreTest is Test {
 
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
-        (address storedPartyA, address storedPartyB,,,) = store.agreements(TEST_SECRET_HASH);
+        (address storedPartyA, address storedPartyB) = _getParties(TEST_SECRET_HASH);
         assertEq(storedPartyA, partyA);
         assertEq(storedPartyB, partyB);
     }
@@ -103,6 +104,7 @@ contract SecretStoreTest is Test {
 
     /// @notice Test secret revelation by authorized party
     /// @dev Verifies that partyA can reveal the secret with correct salt
+    /// @custom:security Verifies proper access control and event emission
     function testRevealSecret() public {
         // First register the secret
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
@@ -122,7 +124,7 @@ contract SecretStoreTest is Test {
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Verify agreement is deleted
-        (address storedPartyA,,,,) = store.agreements(TEST_SECRET_HASH);
+        (address storedPartyA, ) = _getParties(TEST_SECRET_HASH);
         assertEq(storedPartyA, address(0), "Agreement should be deleted");
     }
 
@@ -148,7 +150,7 @@ contract SecretStoreTest is Test {
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Verify agreement is deleted
-        (address storedPartyA,,,,) = store.agreements(TEST_SECRET_HASH);
+        (address storedPartyA, ) = _getParties(TEST_SECRET_HASH);
         assertEq(storedPartyA, address(0), "Agreement should be deleted");
     }
 
@@ -160,18 +162,29 @@ contract SecretStoreTest is Test {
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
-        // Try to reveal as non-participant
+        // Verify agreement is stored
+        (address storedPartyA, address storedPartyB) = _getParties(TEST_SECRET_HASH);
+        assertEq(storedPartyA, partyA, "PartyA not stored correctly");
+        assertEq(storedPartyB, partyB, "PartyB not stored correctly");
+
+        // Try to reveal as non-party
         vm.prank(address(4));
-        vm.expectRevert("Only participants can reveal");
+        vm.expectRevert("Not a party to agreement");
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
     }
 
     /// @notice Test prevention of wrong secret revelation
     /// @dev Verifies that incorrect secrets are rejected
+    /// @custom:security Ensures secrets can only be revealed with correct values
     function testCannotRevealWithWrongSecret() public {
         // First register the secret
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
+
+        // Verify agreement is stored
+        (address storedPartyA, address storedPartyB) = _getParties(TEST_SECRET_HASH);
+        assertEq(storedPartyA, partyA, "PartyA not stored correctly");
+        assertEq(storedPartyB, partyB, "PartyB not stored correctly");
 
         // Try to reveal with wrong secret
         vm.prank(partyA);
@@ -253,7 +266,6 @@ contract SecretStoreTest is Test {
         assertEq(partyB_, address(0), "PartyB should be zero after deletion");
     }
 
-    // EIP-712 type hashes
     bytes32 constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 constant AGREEMENT_TYPE_HASH =
@@ -266,8 +278,11 @@ contract SecretStoreTest is Test {
         address expected
     );
 
-    /// @notice Helper function to create test signatures
-    /// @dev Generates EIP-712 compliant signatures for both parties
+    /// @notice Helper function to create signatures for testing
+    /// @dev Creates EIP-712 signatures for partyA and partyB
+    /// @param hash The secret hash to sign
+    /// @return signatureA The signature from partyA
+    /// @return signatureB The signature from partyB
     function _createSignaturesHelper(bytes32 hash) 
         internal 
         returns (bytes memory signatureA, bytes memory signatureB) 
@@ -294,5 +309,14 @@ contract SecretStoreTest is Test {
 
         emit Debug_Signature(structHash, digest, ecrecover(digest, v1, r1, s1), partyA);
         emit Debug_Signature(structHash, digest, ecrecover(digest, v2, r2, s2), partyB);
+    }
+
+    /// @notice Helper function to get parties from an agreement
+    /// @dev Extracts party addresses while ignoring timestamp and blockNumber
+    /// @param secretHash The hash identifying the agreement
+    /// @return Two addresses: partyA and partyB (zero addresses if agreement doesn't exist)
+    function _getParties(bytes32 secretHash) internal view returns (address, address) {
+        (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
+        return (storedPartyA, storedPartyB);
     }
 }

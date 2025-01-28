@@ -51,14 +51,13 @@ contract SecretStore is
     /// @notice Represents an agreement between two parties about a secret
     /// @dev The agreement is deleted when the secret is revealed. When accessing agreements
     /// mapping with a non-existent key, all fields will be default values (zero addresses,
-    /// zero timestamps, false for isRevealed). Always check agreement.partyA != address(0)
+    /// zero timestamps). Always check agreement.partyA != address(0)
     /// before operating on an agreement.
     struct Agreement {
         address partyA;
         address partyB;
         uint256 timestamp;
         uint256 blockNumber;
-        bool isRevealed;
     }
 
     // secretHash => Agreement
@@ -185,8 +184,7 @@ contract SecretStore is
             partyA: partyA,
             partyB: partyB,
             timestamp: block.timestamp,
-            blockNumber: block.number,
-            isRevealed: false
+            blockNumber: block.number
         });
 
         emit SecretRegistered(
@@ -222,7 +220,7 @@ contract SecretStore is
         
         require(
             msg.sender == agreement.partyA || msg.sender == agreement.partyB,
-            "Only participants can reveal"
+            "Not a party to agreement"
         );
         require(
             keccak256(abi.encodePacked(secret, salt)) == secretHash,
