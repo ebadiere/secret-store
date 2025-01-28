@@ -143,6 +143,7 @@ contract SecretStore is
     }
 
     /// @notice Registers a secret hash with signatures from both parties
+    /// @dev Gas optimization: We cache the agreement in memory to avoid multiple storage reads
     /// @param secretHash Hash of the secret and salt
     /// @param partyA First party's address
     /// @param partyB Second party's address
@@ -155,7 +156,9 @@ contract SecretStore is
         bytes calldata signatureA,
         bytes calldata signatureB
     ) external whenNotPaused nonReentrant {
-        require(agreements[secretHash].partyA == address(0), "Secret already registered");
+        // Gas optimization: Single storage read
+        Agreement memory agreement = agreements[secretHash];
+        require(agreement.partyA == address(0), "Secret already registered");
         require(partyA != address(0), "Invalid party A address");
         require(partyB != address(0), "Invalid party B address");
         require(partyA != partyB, "Parties must be different");
@@ -184,6 +187,7 @@ contract SecretStore is
             "Invalid signature from partyB"
         );
 
+        // Gas optimization: Write directly to storage once
         agreements[secretHash] = Agreement({
             partyA: partyA,
             partyB: partyB,
@@ -201,6 +205,8 @@ contract SecretStore is
     }
 
     /// @notice Reveals a secret and deletes the agreement
+    /// @dev Gas optimization: We cache the agreement in memory to avoid multiple storage reads
+    /// and combine the deletion with the existence check
     /// @param secret The actual secret being revealed
     /// @param salt The salt used to create the hash
     /// @param secretHash Hash of the secret and salt
@@ -209,7 +215,8 @@ contract SecretStore is
         bytes32 salt,
         bytes32 secretHash
     ) external whenNotPaused nonReentrant {
-        Agreement storage agreement = agreements[secretHash];
+        // Gas optimization: Single storage read, cache in memory
+        Agreement memory agreement = agreements[secretHash];
         
         require(agreement.partyA != address(0), "Agreement does not exist");
         require(
@@ -221,6 +228,10 @@ contract SecretStore is
             "Invalid secret or salt"
         );
 
+        // Gas optimization: Delete storage before events to ensure
+        // we don't read from storage again via the events
+        delete agreements[secretHash];
+
         emit SecretRevealed(
             secretHash,
             msg.sender,
@@ -231,8 +242,6 @@ contract SecretStore is
             secretHash,
             msg.sender
         );
-
-        delete agreements[secretHash];
     }
 
     /// @notice Checks if an agreement exists for a given secret hash

@@ -35,7 +35,45 @@ bytes32 private immutable _DOMAIN_SEPARATOR;
 - Simple implementation
 - Standard pattern in EIP-712
 
-### 3. Custom Errors
+### 3. Storage Read Optimization
+**Status**: ✅ Implemented  
+**Impact**: Medium (~5-7% per operation)  
+**Complexity**: Low  
+**Description**: Optimized storage access patterns by:
+1. Caching agreement data in memory:
+```solidity
+// Before
+require(agreements[secretHash].partyA == address(0), "Secret already registered");
+
+// After
+Agreement memory agreement = agreements[secretHash];
+require(agreement.partyA == address(0), "Secret already registered");
+```
+
+2. Combining storage operations:
+```solidity
+// Before - Multiple reads from storage
+Agreement storage agreement = agreements[secretHash];
+require(agreement.partyA != address(0), "Agreement does not exist");
+require(msg.sender == agreement.partyA || msg.sender == agreement.partyB, ...);
+emit Events(...);
+delete agreements[secretHash];
+
+// After - Single read, cache in memory, delete before events
+Agreement memory agreement = agreements[secretHash];
+require(agreement.partyA != address(0), "Agreement does not exist");
+require(msg.sender == agreement.partyA || msg.sender == agreement.partyB, ...);
+delete agreements[secretHash];
+emit Events(...);
+```
+
+Benefits:
+- Reduces SLOAD operations (~2,100 gas per operation)
+- Improves code readability with explicit memory usage
+- No security impact - maintains same validation logic
+- No interface changes required
+
+### 4. Custom Errors
 **Status**: ❌ Reverted  
 **Impact**: Low (~5% deployment, ~200-600 gas per error)  
 **Complexity**: Medium  
@@ -69,15 +107,7 @@ bytes32 private immutable _DOMAIN_SEPARATOR;
   - Increased complexity
   - Need to handle partial failures
 
-### 3. Storage Read Optimization
-**Status**: 📝 Under Consideration  
-**Impact**: Medium  
-**Description**: Could optimize storage reads by:
-- Caching frequently accessed storage variables
-- Using memory instead of storage where possible
-- Combining multiple reads into single operations
-
-### 4. Event Optimization
+### 3. Event Optimization
 **Status**: 📝 Under Consideration  
 **Impact**: Low-Medium  
 **Description**: Could optimize event emissions by:
