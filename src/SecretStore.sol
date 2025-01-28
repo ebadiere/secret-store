@@ -286,7 +286,11 @@ contract SecretStore is
     // Admin functions
 
     /// @notice Authorize an upgrade to a new implementation
-    /// @dev Can only be called by the upgrader role through the proxy's upgradeToAndCall
+    /// @dev Can only be called by the upgrader role through the proxy's upgradeToAndCall.
+    ///      Note: This function is intentionally not marked as view despite current implementation
+    ///      not modifying state. This will trigger a compiler warning (SWC-2018) which can be
+    ///      safely ignored. The non-view status allows future upgrades to add state modifications,
+    ///      timelock checks, or event emissions without changing the function's mutability.
     /// @param newImplementation Address of the new implementation contract
     /// @custom:security Critical function that controls contract upgrades
     /// @custom:security Ensure the new implementation:
