@@ -127,6 +127,10 @@ contract SecretStore is
     /// through the domain separator. Each secret can only be registered once.
     /// @custom:security Agreement existence is checked using partyA address. A zero
     /// address for partyA indicates no agreement exists for that secret hash.
+    /// @custom:security State management checks:
+    /// 1. Prevents duplicate registration of the same secretHash
+    /// 2. Prevents using zero addresses for either party
+    /// 3. Prevents using the same address for both parties
     function registerSecret(
         bytes32 secretHash,
         address partyA,
