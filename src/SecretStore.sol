@@ -134,9 +134,6 @@ contract SecretStore is
         address recoveredA = hash.recover(signatureA);
         address recoveredB = hash.recover(signatureB);
 
-        emit Debug_Signature(structHash, hash, recoveredA, partyA);
-        emit Debug_Signature(structHash, hash, recoveredB, partyB);
-
         require(
             recoveredA == partyA,
             "Invalid signature from partyA"
@@ -166,9 +163,14 @@ contract SecretStore is
     /// @notice Reveal a previously registered secret
     /// @dev Only participants can reveal. Agreement is deleted after reveal to prevent reuse.
     /// @param secret The actual secret in clear text
-    /// @param secretHash Hash of the secret
+    /// @param salt Random value used during registration to prevent rainbow table attacks
+    /// @param secretHash Hash of the secret+salt combination
+    /// @custom:security The salt prevents rainbow table attacks by making it impossible to
+    /// precompute hashes of common secrets. Even if multiple users choose the same secret,
+    /// their hashes will be different due to different random salts.
     function revealSecret(
         string memory secret,
+        bytes32 salt,
         bytes32 secretHash
     ) external whenNotPaused nonReentrant {
         Agreement storage agreement = agreements[secretHash];
@@ -176,10 +178,9 @@ contract SecretStore is
             msg.sender == agreement.partyA || msg.sender == agreement.partyB,
             "Only participants can reveal"
         );
-        require(!agreement.isRevealed, "Secret already revealed");
         require(
-            keccak256(abi.encodePacked(secret)) == secretHash,
-            "Invalid secret"
+            keccak256(abi.encodePacked(secret, salt)) == secretHash,
+            "Invalid secret or salt"
         );
 
         emit SecretRevealed(

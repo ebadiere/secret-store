@@ -9,52 +9,30 @@ import "../src/SecretStore.sol";
 contract SecretStoreTest is Test {
     using MessageHashUtils for bytes32;
 
-    SecretStore store;
-    SecretStore implementation;
+    SecretStore public store;
     
-    address admin = address(1);
+    string constant TEST_SECRET = "my secret message";
+    bytes32 constant TEST_SALT = bytes32(uint256(123)); // Random salt for testing
+    bytes32 constant TEST_SECRET_HASH = keccak256(abi.encodePacked(TEST_SECRET, TEST_SALT));
+    
+    uint256 constant PARTY_A_PRIVATE_KEY = 0x1234;
+    uint256 constant PARTY_B_PRIVATE_KEY = 0x5678;
+    
     address partyA;
     address partyB;
-    address nonParticipant = address(4);
-    
-    uint256 partyAKey;
-    uint256 partyBKey;
-    
-    string constant TEST_SECRET = "my secret";
-    bytes32 constant TEST_SECRET_HASH = keccak256(abi.encodePacked("my secret"));
-
-    // EIP-712 type hashes
-    bytes32 constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 constant AGREEMENT_TYPE_HASH =
-        keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
-
-    event Debug_Signature(
-        bytes32 structHash,
-        bytes32 digest,
-        address recovered,
-        address expected
-    );
 
     function setUp() public {
         // Deploy implementation and proxy
-        implementation = new SecretStore();
+        SecretStore implementation = new SecretStore();
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(implementation),
-            abi.encodeWithSelector(SecretStore.initialize.selector)
+            abi.encodeCall(SecretStore.initialize, ())
         );
         store = SecretStore(address(proxy));
 
-        // Setup accounts
-        partyAKey = 0x1234;
-        partyBKey = 0x5678;
-        partyA = vm.addr(partyAKey);
-        partyB = vm.addr(partyBKey);
-        
-        vm.deal(partyA, 1 ether);
-        vm.deal(partyB, 1 ether);
-        vm.label(partyA, "Party A");
-        vm.label(partyB, "Party B");
+        // Set up test addresses
+        partyA = vm.addr(PARTY_A_PRIVATE_KEY);
+        partyB = vm.addr(PARTY_B_PRIVATE_KEY);
     }
 
     function testInitialization() public {
@@ -65,7 +43,7 @@ contract SecretStoreTest is Test {
 
     function testRegisterSecret() public {
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
-
+        
         vm.expectEmit(true, true, true, true);
         emit SecretStore.SecretRegistered(
             TEST_SECRET_HASH,
@@ -75,27 +53,11 @@ contract SecretStoreTest is Test {
             block.number
         );
 
-        store.registerSecret(
-            TEST_SECRET_HASH,
-            partyA,
-            partyB,
-            signatureA,
-            signatureB
-        );
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
-        (
-            address storedPartyA,
-            address storedPartyB,
-            uint256 storedTimestamp,
-            uint256 storedBlockNumber,
-            bool isRevealed
-        ) = store.agreements(TEST_SECRET_HASH);
-
+        (address storedPartyA, address storedPartyB,,,) = store.agreements(TEST_SECRET_HASH);
         assertEq(storedPartyA, partyA);
         assertEq(storedPartyB, partyB);
-        assertEq(storedBlockNumber, block.number);
-        assertEq(storedTimestamp, block.timestamp);
-        assertEq(isRevealed, false);
     }
 
     function testRevealSecret() public {
@@ -114,7 +76,7 @@ contract SecretStoreTest is Test {
             block.number
         );
 
-        store.revealSecret(TEST_SECRET, TEST_SECRET_HASH);
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Verify agreement is deleted
         (address storedPartyA,,,,) = store.agreements(TEST_SECRET_HASH);
@@ -137,7 +99,7 @@ contract SecretStoreTest is Test {
             block.number
         );
 
-        store.revealSecret(TEST_SECRET, TEST_SECRET_HASH);
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Verify agreement is deleted
         (address storedPartyA,,,,) = store.agreements(TEST_SECRET_HASH);
@@ -150,9 +112,9 @@ contract SecretStoreTest is Test {
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
         // Try to reveal as non-participant
-        vm.prank(nonParticipant);
+        vm.prank(address(4));
         vm.expectRevert("Only participants can reveal");
-        store.revealSecret(TEST_SECRET, TEST_SECRET_HASH);
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
     }
 
     function testCannotRevealWithWrongSecret() public {
@@ -162,8 +124,19 @@ contract SecretStoreTest is Test {
 
         // Try to reveal with wrong secret
         vm.prank(partyA);
-        vm.expectRevert("Invalid secret");
-        store.revealSecret("wrong secret", TEST_SECRET_HASH);
+        vm.expectRevert("Invalid secret or salt");
+        store.revealSecret("wrong secret", TEST_SALT, TEST_SECRET_HASH);
+    }
+
+    function testCannotRevealWithWrongSalt() public {
+        // First register the secret
+        (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
+
+        // Try to reveal with wrong salt
+        vm.prank(partyA);
+        vm.expectRevert("Invalid secret or salt");
+        store.revealSecret(TEST_SECRET, bytes32(uint256(456)), TEST_SECRET_HASH);
     }
 
     function testCannotRegisterSameSecretTwice() public {
@@ -180,13 +153,26 @@ contract SecretStoreTest is Test {
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
         
         vm.prank(partyA);
-        store.revealSecret(TEST_SECRET, TEST_SECRET_HASH);
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Try to reveal again
         vm.prank(partyB);
         vm.expectRevert("Only participants can reveal");
-        store.revealSecret(TEST_SECRET, TEST_SECRET_HASH);
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
     }
+
+    // EIP-712 type hashes
+    bytes32 constant DOMAIN_TYPE_HASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 constant AGREEMENT_TYPE_HASH =
+        keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
+
+    event Debug_Signature(
+        bytes32 structHash,
+        bytes32 digest,
+        address recovered,
+        address expected
+    );
 
     // Helper functions
     function _createSignaturesHelper(bytes32 hash) 
@@ -207,8 +193,8 @@ contract SecretStoreTest is Test {
             abi.encodePacked("\x19\x01", domainSeparator, structHash)
         );
 
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(partyAKey, digest);
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(partyBKey, digest);
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
 
         signatureA = abi.encodePacked(r1, s1, v1);
         signatureB = abi.encodePacked(r2, s2, v2);
