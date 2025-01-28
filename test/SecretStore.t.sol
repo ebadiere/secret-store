@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {Test, console2} from "forge-std/Test.sol";
 import {SecretStore} from "../src/SecretStore.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {IERC1967} from "@openzeppelin/contracts/interfaces/IERC1967.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
@@ -264,6 +264,177 @@ contract SecretStoreTest is Test {
         assertFalse(exists, "Agreement should not exist after deletion");
         assertEq(partyA_, address(0), "PartyA should be zero after deletion");
         assertEq(partyB_, address(0), "PartyB should be zero after deletion");
+    }
+
+    /// @notice Test pausing functionality
+    /// @dev Verifies that contract can be paused and operations are blocked
+    function testPause() public {
+        // First register a secret
+        (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
+
+        // Pause the contract
+        store.pause();
+        assertTrue(store.paused(), "Contract should be paused");
+
+        // Try to register a new secret while paused
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
+
+        // Try to reveal a secret while paused
+        vm.prank(partyA);
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
+
+        // Unpause and verify operations work again
+        store.unpause();
+        assertFalse(store.paused(), "Contract should not be paused");
+        
+        // Should be able to register a new secret after unpausing
+        bytes32 newSecretHash = keccak256(abi.encodePacked("new secret"));
+        (signatureA, signatureB) = _createSignaturesHelper(newSecretHash);
+        store.registerSecret(newSecretHash, partyA, partyB, signatureA, signatureB);
+    }
+
+    /// @notice Test pause access control
+    /// @dev Verifies that only PAUSER_ROLE can pause/unpause
+    function testPauseAccessControl() public {
+        address nonPauser = makeAddr("nonPauser");
+        
+        // Try to pause from non-pauser account
+        vm.startPrank(nonPauser);
+        vm.expectRevert(accessControlError(nonPauser, store.PAUSER_ROLE()));
+        store.pause();
+        vm.stopPrank();
+
+        // Pause from authorized account
+        store.pause();
+        assertTrue(store.paused(), "Contract should be paused");
+
+        // Try to unpause from non-pauser account
+        vm.startPrank(nonPauser);
+        vm.expectRevert(accessControlError(nonPauser, store.PAUSER_ROLE()));
+        store.unpause();
+        vm.stopPrank();
+
+        // Unpause from authorized account
+        store.unpause();
+        assertFalse(store.paused(), "Contract should not be paused");
+    }
+
+    /// @notice Test role management functionality
+    /// @dev Verifies role granting, revoking, and renouncing
+    function testRoleManagement() public {
+        address newAdmin = makeAddr("newAdmin");
+        address newPauser = makeAddr("newPauser");
+        address another = makeAddr("another");
+
+        // Grant roles
+        store.grantRole(store.DEFAULT_ADMIN_ROLE(), newAdmin);
+        assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), newAdmin), "Role should be granted");
+
+        vm.startPrank(newAdmin);
+        store.grantRole(store.PAUSER_ROLE(), newPauser);
+        assertTrue(store.hasRole(store.PAUSER_ROLE(), newPauser), "Role should be granted");
+        vm.stopPrank();
+
+        // Non-admin cannot grant roles
+        vm.startPrank(newPauser);
+        bytes32 role = store.PAUSER_ROLE();
+        vm.expectRevert(accessControlError(newPauser, store.DEFAULT_ADMIN_ROLE()));
+        store.grantRole(role, another);
+        vm.stopPrank();
+
+        // Admin can revoke roles
+        vm.startPrank(newAdmin);
+        store.revokeRole(store.PAUSER_ROLE(), newPauser);
+        assertFalse(store.hasRole(store.PAUSER_ROLE(), newPauser), "Role should be revoked");
+        vm.stopPrank();
+
+        // Account can renounce its own role
+        store.renounceRole(store.DEFAULT_ADMIN_ROLE(), address(this));
+        assertFalse(store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(this)), "Role should be renounced");
+    }
+
+    /// @notice Test role hierarchy
+    /// @dev Verifies that only admin can manage other roles
+    function testRoleHierarchy() public {
+        address admin = makeAddr("admin");
+        address pauser = makeAddr("pauser");
+        address upgrader = makeAddr("upgrader");
+        address another = makeAddr("another");
+
+        // Grant admin role
+        store.grantRole(store.DEFAULT_ADMIN_ROLE(), admin);
+
+        // Admin can grant other roles
+        vm.startPrank(admin);
+        store.grantRole(store.PAUSER_ROLE(), pauser);
+        store.grantRole(store.UPGRADER_ROLE(), upgrader);
+        vm.stopPrank();
+
+        // Non-admin roles cannot grant roles
+        vm.startPrank(pauser);
+        bytes32 role = store.PAUSER_ROLE();
+        vm.expectRevert(accessControlError(pauser, store.DEFAULT_ADMIN_ROLE()));
+        store.grantRole(role, another);
+        vm.stopPrank();
+
+        vm.startPrank(upgrader);
+        role = store.UPGRADER_ROLE();
+        vm.expectRevert(accessControlError(upgrader, store.DEFAULT_ADMIN_ROLE()));
+        store.grantRole(role, another);
+        vm.stopPrank();
+
+        // Only admin can revoke roles
+        vm.startPrank(pauser);
+        role = store.PAUSER_ROLE();
+        vm.expectRevert(accessControlError(pauser, store.DEFAULT_ADMIN_ROLE()));
+        store.revokeRole(role, another);
+        vm.stopPrank();
+
+        // Admin can revoke all roles
+        vm.startPrank(admin);
+        store.revokeRole(store.PAUSER_ROLE(), pauser);
+        store.revokeRole(store.UPGRADER_ROLE(), upgrader);
+        assertFalse(store.hasRole(store.PAUSER_ROLE(), pauser), "Pauser role should be revoked");
+        assertFalse(store.hasRole(store.UPGRADER_ROLE(), upgrader), "Upgrader role should be revoked");
+        vm.stopPrank();
+    }
+
+    /// @notice Test role separation
+    /// @dev Verifies that roles have distinct permissions
+    function testRoleSeparation() public {
+        address pauser = makeAddr("pauser");
+        address upgrader = makeAddr("upgrader");
+        address newImplementation = makeAddr("newImplementation");
+
+        // Grant specific roles
+        store.grantRole(store.PAUSER_ROLE(), pauser);
+        store.grantRole(store.UPGRADER_ROLE(), upgrader);
+
+        // Pauser can pause but not upgrade
+        vm.startPrank(pauser);
+        store.pause();
+        vm.expectRevert(accessControlError(pauser, store.UPGRADER_ROLE()));
+        store.upgradeToAndCall(newImplementation, "");
+        vm.stopPrank();
+
+        // Upgrader can upgrade but not pause
+        vm.startPrank(upgrader);
+        vm.expectRevert(accessControlError(upgrader, store.PAUSER_ROLE()));
+        store.unpause();
+        vm.stopPrank();
+    }
+
+    /// @notice Helper to format AccessControl error message
+    /// @dev Creates the expected error message for role-based access control
+    function accessControlError(address account, bytes32 role) internal pure returns (bytes memory) {
+        return abi.encodeWithSignature(
+            "AccessControlUnauthorizedAccount(address,bytes32)",
+            account,
+            role
+        );
     }
 
     bytes32 constant DOMAIN_TYPE_HASH =
