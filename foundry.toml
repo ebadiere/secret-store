@@ -1,6 +1,25 @@
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
 [profile.default]
 src = "src"
 out = "out"
 libs = ["lib"]
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+# Compilation settings
+# Enable IR-based code generation for more thorough testing
+via_ir = true
+# Enable the optimizer for better gas efficiency
+optimizer = true
+optimizer_runs = 20000
+
+# Fuzz testing configuration
+# Each fuzz test will run this many times with different random inputs
+runs = 256  # Default is 256, increase for more thorough testing
+# Maximum number of test case rejections before giving up
+max_test_rejects = 65536  # Allows for more test case generation attempts
+# Seed for random number generation (optional, remove for true randomness)
+# seed = '0x1234'  # Uncomment to make tests deterministic
+
+# Gas reporting settings
+gas_reports = ["*"]
+gas_reports_ignore = []
