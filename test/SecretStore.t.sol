@@ -155,10 +155,47 @@ contract SecretStoreTest is Test {
         vm.prank(partyA);
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
-        // Try to reveal again
+        // Try to reveal again - should fail because agreement is deleted
         vm.prank(partyB);
-        vm.expectRevert("Only participants can reveal");
+        vm.expectRevert("Agreement does not exist");
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
+    }
+
+    function testCannotRevealNonExistentSecret() public {
+        // Try to reveal a secret that was never registered
+        vm.prank(partyA);
+        vm.expectRevert("Agreement does not exist");
+        store.revealSecret(TEST_SECRET, TEST_SALT, bytes32(uint256(999)));
+    }
+
+    function testAgreementExistsCheck() public {
+        // Check non-existent agreement
+        (bool exists, address partyA_, address partyB_) = store.agreementExists(TEST_SECRET_HASH);
+        assertFalse(exists, "Agreement should not exist");
+        assertEq(partyA_, address(0), "PartyA should be zero");
+        assertEq(partyB_, address(0), "PartyB should be zero");
+
+        // Register agreement
+        (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
+
+        // Check existing agreement
+        (exists, partyA_, partyB_) = store.agreementExists(TEST_SECRET_HASH);
+        assertTrue(exists, "Agreement should exist");
+        assertEq(partyA_, partyA, "PartyA should match");
+        assertEq(partyB_, partyB, "PartyB should match");
+
+        // Reveal secret and verify agreement is deleted
+        vm.prank(partyA);
+        vm.expectEmit(true, true, true, true);
+        emit SecretStore.AgreementDeleted(TEST_SECRET_HASH, partyA);
+        store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
+
+        // Check agreement is deleted
+        (exists, partyA_, partyB_) = store.agreementExists(TEST_SECRET_HASH);
+        assertFalse(exists, "Agreement should not exist after deletion");
+        assertEq(partyA_, address(0), "PartyA should be zero after deletion");
+        assertEq(partyB_, address(0), "PartyB should be zero after deletion");
     }
 
     // EIP-712 type hashes

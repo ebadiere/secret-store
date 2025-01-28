@@ -16,6 +16,13 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///      - Signatures are bound to specific parties and cannot be reused
 ///      - Agreements are deleted after reveal to prevent reuse
 ///      - Uses OpenZeppelin's ECDSA library for secure signature verification
+/// @custom:security Important security notes:
+///      1. Agreement existence is checked using partyA address. A zero address for
+///         partyA indicates no agreement exists. This check is crucial because
+///         Solidity mappings return default values for non-existent keys, which
+///         could lead to unauthorized access if not properly checked.
+///      2. Agreements are completely deleted after revelation to prevent reuse
+///      3. Salt is required to prevent rainbow table attacks on common secrets
 contract SecretStore is
     Initializable,
     UUPSUpgradeable,
@@ -41,7 +48,10 @@ contract SecretStore is
     string private constant SIGNING_VERSION = "1";
 
     /// @notice Represents an agreement between two parties about a secret
-    /// @dev The agreement is deleted when the secret is revealed
+    /// @dev The agreement is deleted when the secret is revealed. When accessing agreements
+    /// mapping with a non-existent key, all fields will be default values (zero addresses,
+    /// zero timestamps, false for isRevealed). Always check agreement.partyA != address(0)
+    /// before operating on an agreement.
     struct Agreement {
         address partyA;
         address partyB;
@@ -51,6 +61,9 @@ contract SecretStore is
     }
 
     // secretHash => Agreement
+    /// @notice Mapping from secretHash to Agreement
+    /// @dev IMPORTANT: Solidity mappings return default values for non-existent keys.
+    /// Always check agreement.partyA != address(0) before using an agreement.
     mapping(bytes32 => Agreement) public agreements;
 
     // Events
@@ -68,6 +81,11 @@ contract SecretStore is
         address indexed revealer,
         uint256 timestamp,
         uint256 blockNumber
+    );
+
+    event AgreementDeleted(
+        bytes32 indexed secretHash,
+        address indexed deletedBy
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -100,13 +118,15 @@ contract SecretStore is
 
     /// @notice Register a secret with signatures from both parties
     /// @dev Uses EIP-712 for typed signatures to prevent replay attacks
-    /// @param secretHash Hash of the secret
+    /// @param secretHash Hash of the secret+salt combination
     /// @param partyA First party's address
     /// @param partyB Second party's address
     /// @param signatureA EIP-712 signature from partyA
     /// @param signatureB EIP-712 signature from partyB
     /// @custom:security Signatures are bound to this specific contract and chain
     /// through the domain separator. Each secret can only be registered once.
+    /// @custom:security Agreement existence is checked using partyA address. A zero
+    /// address for partyA indicates no agreement exists for that secret hash.
     function registerSecret(
         bytes32 secretHash,
         address partyA,
@@ -168,12 +188,20 @@ contract SecretStore is
     /// @custom:security The salt prevents rainbow table attacks by making it impossible to
     /// precompute hashes of common secrets. Even if multiple users choose the same secret,
     /// their hashes will be different due to different random salts.
+    /// @custom:security Agreement existence is checked before any operations. This is crucial
+    /// because Solidity mappings return default values (all zeros) for non-existent keys,
+    /// which could lead to security issues if not properly checked. We explicitly check
+    /// that partyA is not the zero address to confirm existence.
     function revealSecret(
         string memory secret,
         bytes32 salt,
         bytes32 secretHash
     ) external whenNotPaused nonReentrant {
         Agreement storage agreement = agreements[secretHash];
+        
+        // Check that agreement exists by verifying partyA is not zero address
+        require(agreement.partyA != address(0), "Agreement does not exist");
+        
         require(
             msg.sender == agreement.partyA || msg.sender == agreement.partyB,
             "Only participants can reveal"
@@ -191,7 +219,36 @@ contract SecretStore is
             block.number
         );
 
+        emit AgreementDeleted(
+            secretHash,
+            msg.sender
+        );
+
         delete agreements[secretHash];
+    }
+
+    /// @notice Check if an agreement exists for a given secret hash
+    /// @dev An agreement exists if partyA is not the zero address. This check is crucial
+    /// because Solidity mappings return default values for non-existent keys. Without
+    /// this check, code might operate on an agreement that appears valid (has all fields
+    /// set to default values) but actually doesn't exist.
+    /// @param secretHash The hash to check
+    /// @return exists True if the agreement exists
+    /// @return partyA The first party's address (zero if no agreement)
+    /// @return partyB The second party's address (zero if no agreement)
+    function agreementExists(bytes32 secretHash) 
+        external 
+        view 
+        returns (
+            bool exists,
+            address partyA,
+            address partyB
+        ) 
+    {
+        Agreement storage agreement = agreements[secretHash];
+        partyA = agreement.partyA;
+        partyB = agreement.partyB;
+        exists = partyA != address(0);
     }
 
     /// @notice Returns the domain separator used in EIP-712 signatures
