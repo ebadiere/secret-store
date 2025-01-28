@@ -77,11 +77,11 @@ contract SecretStore is
     mapping(bytes32 => Agreement) public agreements;
 
     // Events
-    /// @dev Gas optimization: Only index parameters that will be used for filtering
+    /// @dev Gas optimization: We only index parameters that will be used for filtering
     /// - secretHash is indexed as it's the primary key for lookups
-    /// - partyA/partyB are indexed as they're commonly used to filter events by participant
-    /// - timestamp/blockNumber are not indexed as they're rarely used for filtering
-    /// and can be derived from the block info
+    /// - partyA/partyB are indexed as they're used to filter agreements by participant
+    /// - timestamp and blockNumber are not indexed as they're rarely used for filtering
+    /// and indexing them would increase gas costs unnecessarily
     event SecretRegistered(
         bytes32 indexed secretHash,
         address indexed partyA,
@@ -90,57 +90,22 @@ contract SecretStore is
         uint256 blockNumber
     );
 
-    /// @dev Gas optimization: Only index essential parameters
-    /// - secretHash is indexed for correlation with registration
-    /// - revealer is indexed to filter reveals by specific party
-    /// - secret is not indexed as it's too large and rarely filtered
+    /// @dev Gas optimization: We index secretHash for correlation with registration
+    /// and revealer for filtering reveals by address. The secret itself is not indexed
+    /// as it would be expensive and is never used for filtering.
     event SecretRevealed(
         bytes32 indexed secretHash,
         address indexed revealer,
         string secret
     );
 
+    /// @dev Gas optimization: We only index secretHash to correlate with registration.
+    /// The revealer is not indexed since the deletion event is always paired with
+    /// a SecretRevealed event which already indexes the revealer.
     event AgreementDeleted(
         bytes32 indexed secretHash,
-        address indexed deletedBy
+        address revealer
     );
-
-    /// @notice Gap for adding new storage variables in upgrades
-    /// @dev This gap is reserved for future storage variables to prevent collisions
-    /// @custom:security This gap should be reduced when adding new storage variables
-    /// @custom:security When adding new storage variables:
-    /// 1. Add them after existing variables but before this gap
-    /// 2. Reduce the gap size by the number of slots used
-    /// 3. Create a new reinitializer function if initialization is needed
-    uint256[50] private __gap;
-
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
-    constructor() {
-        _disableInitializers();
-    }
-
-    /// @notice Initializes the contract with an admin address
-    /// @dev Sets up roles and initializes gas-optimized components:
-    /// 1. Domain separator caching for efficient signature verification
-    /// 2. Single initialization of roles to minimize storage operations
-    /// 3. Proper initialization of storage variables to avoid future SSTOREs
-    /// @param admin The address that will have admin, pauser, and upgrader roles
-    /// @custom:security This function can only be called once due to initializer modifier
-    /// @custom:security For new state variables added in upgrades, create a new function with reinitializer(N)
-    function initialize(address admin) external initializer {
-        __AccessControl_init();
-        __Pausable_init();
-        __UUPSUpgradeable_init();
-        __ReentrancyGuard_init();
-
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(PAUSER_ROLE, admin);
-        _grantRole(UPGRADER_ROLE, admin);
-
-        _CACHED_CHAIN_ID = block.chainid;
-        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
-    }
 
     /// @notice Registers a secret hash with signatures from both parties
     /// @dev Gas optimization: We cache the agreement in memory to avoid multiple storage reads
@@ -348,4 +313,41 @@ contract SecretStore is
     function proxiableUUID() external pure override returns (bytes32) {
         return 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
     }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initializes the contract with an admin address
+    /// @dev Sets up roles and initializes gas-optimized components:
+    /// 1. Domain separator caching for efficient signature verification
+    /// 2. Single initialization of roles to minimize storage operations
+    /// 3. Proper initialization of storage variables to avoid future SSTOREs
+    /// @param admin The address that will have admin, pauser, and upgrader roles
+    /// @custom:security This function can only be called once due to initializer modifier
+    /// @custom:security For new state variables added in upgrades, create a new function with reinitializer(N)
+    function initialize(address admin) external initializer {
+        __AccessControl_init();
+        __Pausable_init();
+        __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PAUSER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
+
+        _CACHED_CHAIN_ID = block.chainid;
+        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
+    }
+
+    /// @notice Gap for adding new storage variables in upgrades
+    /// @dev This gap is reserved for future storage variables to prevent collisions
+    /// @custom:security This gap should be reduced when adding new storage variables
+    /// @custom:security When adding new storage variables:
+    /// 1. Add them after existing variables but before this gap
+    /// 2. Reduce the gap size by the number of slots used
+    /// 3. Create a new reinitializer function if initialization is needed
+    uint256[50] private __gap;
 }

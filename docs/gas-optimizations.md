@@ -73,7 +73,60 @@ Benefits:
 - No security impact - maintains same validation logic
 - No interface changes required
 
-### 4. Custom Errors
+### 4. Event Optimization
+**Status**: ✅ Implemented  
+**Impact**: Low-Medium (~1-2% per operation)  
+**Complexity**: Low  
+**Description**: Optimized event parameter indexing to reduce gas costs while maintaining functionality:
+
+1. `SecretRegistered` event:
+```solidity
+// Before - All fields indexed
+event SecretRegistered(
+    bytes32 indexed secretHash,
+    address indexed partyA,
+    address indexed partyB,
+    uint256 indexed timestamp,  // Unnecessary indexing
+    uint256 indexed blockNumber // Unnecessary indexing
+);
+
+// After - Only essential fields indexed
+event SecretRegistered(
+    bytes32 indexed secretHash,
+    address indexed partyA,
+    address indexed partyB,
+    uint256 timestamp,
+    uint256 blockNumber
+);
+```
+
+2. `AgreementDeleted` event:
+```solidity
+// Before - Both fields indexed
+event AgreementDeleted(
+    bytes32 indexed secretHash,
+    address indexed deletedBy
+);
+
+// After - Only secretHash indexed
+event AgreementDeleted(
+    bytes32 indexed secretHash,
+    address revealer
+);
+```
+
+Benefits:
+- Reduces gas cost of event emission
+- Maintains searchability for important parameters
+- No impact on event usability
+- Better alignment with event usage patterns
+
+Trade-offs:
+- Slightly harder to filter by revealer in AgreementDeleted
+- Can still correlate with SecretRevealed event if needed
+- Timestamp/blockNumber no longer indexed but rarely used for filtering
+
+### 5. Custom Errors
 **Status**: ❌ Reverted  
 **Impact**: Low (~5% deployment, ~200-600 gas per error)  
 **Complexity**: Medium  
