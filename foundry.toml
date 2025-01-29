@@ -12,6 +12,10 @@ via_ir = true
 optimizer = true
 optimizer_runs = 20000
 
+# Gas reporting
+gas_reports = ["SecretStore"]
+gas_reports_ignore = []
+
 # Fuzz testing configuration
 # Each fuzz test will run this many times with different random inputs
 runs = 256  # Default is 256, increase for more thorough testing
@@ -19,7 +23,3 @@ runs = 256  # Default is 256, increase for more thorough testing
 max_test_rejects = 65536  # Allows for more test case generation attempts
 # Seed for random number generation (optional, remove for true randomness)
 # seed = '0x1234'  # Uncomment to make tests deterministic
-
-# Gas reporting settings
-gas_reports = ["*"]
-gas_reports_ignore = []

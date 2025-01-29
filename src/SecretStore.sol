@@ -117,9 +117,12 @@ contract SecretStore is
         address revealer
     );
 
-    /// @notice Registers a secret hash with signatures from both parties
-    /// @dev Gas optimization: We cache the agreement in memory to avoid multiple storage reads
-    /// and optimize signature verification by caching the EIP-712 hash
+    /// @notice Register a new secret agreement between two parties
+    /// @dev Gas optimizations:
+    /// 1. Use calldata for signatures to avoid memory copies
+    /// 2. Cache hashes to avoid recomputation
+    /// 3. Verify signatures before state changes
+    /// 4. Single storage write at the end
     /// @param secretHash Hash of the secret and salt
     /// @param partyA First party's address
     /// @param partyB Second party's address
@@ -132,14 +135,14 @@ contract SecretStore is
         bytes calldata signatureA,
         bytes calldata signatureB
     ) external whenNotPaused nonReentrant {
-        // Gas optimization: Single storage read
+        // Check if agreement already exists
         Agreement memory agreement = agreements[secretHash];
         require(agreement.partyA == address(0), "Secret already registered");
         require(partyA != address(0), "Invalid party A address");
         require(partyB != address(0), "Invalid party B address");
         require(partyA != partyB, "Parties must be different");
 
-        // Gas optimization: Cache the struct hash to avoid recomputation
+        // Cache the struct hash to avoid recomputation
         bytes32 structHash = keccak256(
             abi.encode(
                 TYPEHASH,
@@ -149,10 +152,10 @@ contract SecretStore is
             )
         );
 
-        // Gas optimization: Cache the EIP-712 hash to avoid recomputation
+        // Cache the EIP-712 hash to avoid recomputation
         bytes32 hash = _hashTypedDataV4(structHash);
 
-        // Gas optimization: Verify both signatures before any state changes
+        // Verify both signatures before any state changes
         bool validA = SignatureChecker.isValidSignatureNow(
             partyA,
             hash,
@@ -167,7 +170,7 @@ contract SecretStore is
         require(validA, "Invalid signature from partyA");
         require(validB, "Invalid signature from partyB");
 
-        // Gas optimization: Write directly to storage once
+        // Write directly to storage once
         agreements[secretHash] = Agreement({
             partyA: partyA,
             partyB: partyB,
@@ -185,8 +188,9 @@ contract SecretStore is
     }
 
     /// @notice Reveals a secret and deletes the agreement
-    /// @dev Gas optimization: We cache the agreement in memory to avoid multiple storage reads
-    /// and combine the deletion with the existence check
+    /// @dev Gas optimizations:
+    /// 1. Use calldata for secret to avoid memory copies
+    /// 2. Delete storage before events to avoid unnecessary reads
     /// @param secret The actual secret being revealed
     /// @param salt The salt used to create the hash
     /// @param secretHash Hash of the secret and salt
@@ -195,7 +199,7 @@ contract SecretStore is
         bytes32 salt,
         bytes32 secretHash
     ) external whenNotPaused nonReentrant {
-        // Gas optimization: Single storage read, cache in memory
+        // Load agreement data for validation
         Agreement memory agreement = agreements[secretHash];
         
         require(agreement.partyA != address(0), "Agreement does not exist");
@@ -208,8 +212,7 @@ contract SecretStore is
             "Invalid secret or salt"
         );
 
-        // Gas optimization: Delete storage before events to ensure
-        // we don't read from storage again via the events
+        // Delete storage before events to avoid unnecessary reads
         delete agreements[secretHash];
 
         emit SecretRevealed(
@@ -224,23 +227,20 @@ contract SecretStore is
         );
     }
 
-    /// @notice Checks if an agreement exists for a given secret hash
-    /// @dev Gas optimization: Returns multiple values to avoid struct copying
-    /// and minimize memory allocation. The function is marked view to save
-    /// gas when called externally.
-    /// @param secretHash The hash to check
-    /// @return exists Whether an agreement exists
-    /// @return partyA The first party's address (address(0) if no agreement)
-    /// @return partyB The second party's address (address(0) if no agreement)
-    function agreementExists(bytes32 secretHash)
-        external
-        view
-        returns (bool exists, address partyA, address partyB)
-    {
-        Agreement storage agreement = agreements[secretHash];
-        partyA = agreement.partyA;
-        partyB = agreement.partyB;
-        exists = partyA != address(0);
+    /// @notice Gets the domain separator for EIP-712 signatures
+    /// @dev Gas optimization: Return cached value directly
+    /// Chain ID changes are handled at deployment time
+    /// @return The current domain separator
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
+        return _CACHED_DOMAIN_SEPARATOR;
+    }
+
+    /// @notice Gets the chain ID used for EIP-712 signatures
+    /// @dev Gas optimization: Return cached value directly
+    /// This avoids the CHAINID opcode cost
+    /// @return The chain ID used for signatures
+    function getChainId() public view returns (uint256) {
+        return _CACHED_CHAIN_ID;
     }
 
     /// @notice Returns the domain separator used in EIP-712 signatures
@@ -252,7 +252,7 @@ contract SecretStore is
     /// 2. Automatic updates if a chain fork occurs
     /// 3. No storage overhead (uses immutable variables)
     /// @return The current domain separator
-    function DOMAIN_SEPARATOR() public view returns (bytes32) {
+    function DOMAIN_SEPARATOR_OLD() public view returns (bytes32) {
         return _CACHED_DOMAIN_SEPARATOR;
     }
 

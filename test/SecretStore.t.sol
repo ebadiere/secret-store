@@ -234,7 +234,7 @@ contract SecretStoreTest is Test {
     /// @custom:security Critical for preventing operations on non-existent agreements
     function testAgreementExistsCheck() public {
         // Check non-existent agreement
-        (bool exists, address partyA_, address partyB_) = store.agreementExists(TEST_SECRET_HASH);
+        (bool exists, address partyA_, address partyB_) = _checkAgreement(TEST_SECRET_HASH);
         assertFalse(exists, "Agreement should not exist");
         assertEq(partyA_, address(0), "PartyA should be zero");
         assertEq(partyB_, address(0), "PartyB should be zero");
@@ -244,7 +244,7 @@ contract SecretStoreTest is Test {
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
         // Check existing agreement
-        (exists, partyA_, partyB_) = store.agreementExists(TEST_SECRET_HASH);
+        (exists, partyA_, partyB_) = _checkAgreement(TEST_SECRET_HASH);
         assertTrue(exists, "Agreement should exist");
         assertEq(partyA_, partyA, "PartyA should match");
         assertEq(partyB_, partyB, "PartyB should match");
@@ -256,7 +256,7 @@ contract SecretStoreTest is Test {
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Check agreement is deleted
-        (exists, partyA_, partyB_) = store.agreementExists(TEST_SECRET_HASH);
+        (exists, partyA_, partyB_) = _checkAgreement(TEST_SECRET_HASH);
         assertFalse(exists, "Agreement should not exist after deletion");
         assertEq(partyA_, address(0), "PartyA should be zero after deletion");
         assertEq(partyB_, address(0), "PartyB should be zero after deletion");
@@ -536,5 +536,16 @@ contract SecretStoreTest is Test {
     function _getParties(bytes32 secretHash) internal view returns (address, address) {
         (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
         return (storedPartyA, storedPartyB);
+    }
+
+    /// @notice Helper function to check agreement existence and get party addresses
+    /// @dev Replaces the contract's agreementExists function for testing purposes
+    function _checkAgreement(bytes32 secretHash)
+        internal
+        view
+        returns (bool exists, address partyA_, address partyB_)
+    {
+        (partyA_, partyB_, ,) = store.agreements(secretHash);
+        exists = partyA_ != address(0);
     }
 }

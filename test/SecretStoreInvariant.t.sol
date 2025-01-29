@@ -34,45 +34,15 @@ contract SecretStoreInvariantTest is Test {
         partyB = vm.addr(PARTY_B_PRIVATE_KEY);
     }
 
-    /// @notice Verify that a revealed secret is always deleted
-    /// @dev After any successful reveal, the agreement should be deleted
-    function invariant_revealedSecretsAreDeleted() public {
-        // Create and register a secret
-        string memory secret = "test secret";
-        bytes32 salt = bytes32(uint256(123));
-        bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
-        
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(secretHash);
-        store.registerSecret(secretHash, partyA, partyB, signatureA, signatureB);
-        
-        // Reveal the secret
-        vm.prank(partyA);
-        store.revealSecret(secret, salt, secretHash);
-        
-        // Verify the agreement is deleted
-        (bool exists, address storedPartyA,) = store.agreementExists(secretHash);
-        assertFalse(exists, "Agreement should be deleted after reveal");
-        assertEq(storedPartyA, address(0), "PartyA should be zero after deletion");
-    }
-
-    /// @notice Invariant: Only parties to an agreement can reveal the secret
-    function invariant_onlyPartiesCanReveal() public {
-        bytes32 secretHash = keccak256(abi.encodePacked("test secret", "test salt"));
-        
-        // Register the secret first
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(secretHash);
-        store.registerSecret(secretHash, partyA, partyB, signatureA, signatureB);
-
-        // Try to reveal as non-party
-        vm.expectRevert("Not a party to agreement");
-        store.revealSecret("test secret", "test salt", secretHash);
-    }
-
-    /// @notice Invariant: Only registered secrets can be revealed
-    function invariant_onlyRegisteredSecretsCanBeRevealed() public {
-        bytes32 secretHash = keccak256(abi.encodePacked("test secret", "test salt"));
-        vm.expectRevert("Agreement does not exist");
-        store.revealSecret("test secret", "test salt", secretHash);
+    /// @notice Helper function to check agreement existence and get party addresses
+    /// @dev Replaces the contract's agreementExists function for testing purposes
+    function _checkAgreement(bytes32 secretHash)
+        internal
+        view
+        returns (bool exists, address partyA_, address partyB_)
+    {
+        (partyA_, partyB_, ,) = store.agreements(secretHash);
+        exists = partyA_ != address(0);
     }
 
     /// @notice Helper function to create test signatures
@@ -99,5 +69,45 @@ contract SecretStoreInvariantTest is Test {
         
         signatureA = abi.encodePacked(r1, s1, v1);
         signatureB = abi.encodePacked(r2, s2, v2);
+    }
+
+    /// @notice Invariant: Revealed secrets must be deleted from storage
+    function invariant_revealedSecretsAreDeleted() public {
+        string memory secret = "test secret";
+        bytes32 salt = bytes32(uint256(123));
+        bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
+        
+        // Create signatures and register secret
+        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(secretHash);
+        store.registerSecret(secretHash, partyA, partyB, signatureA, signatureB);
+        
+        // Reveal the secret
+        vm.prank(partyA);
+        store.revealSecret(secret, salt, secretHash);
+        
+        // Verify the agreement is deleted
+        (bool exists, address storedPartyA,) = _checkAgreement(secretHash);
+        assertFalse(exists, "Agreement should be deleted after reveal");
+        assertEq(storedPartyA, address(0), "PartyA should be zero after deletion");
+    }
+
+    /// @notice Invariant: Only parties to an agreement can reveal the secret
+    function invariant_onlyPartiesCanReveal() public {
+        bytes32 secretHash = keccak256(abi.encodePacked("test secret", "test salt"));
+        
+        // Register the secret first
+        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(secretHash);
+        store.registerSecret(secretHash, partyA, partyB, signatureA, signatureB);
+
+        // Try to reveal as non-party
+        vm.expectRevert("Not a party to agreement");
+        store.revealSecret("test secret", "test salt", secretHash);
+    }
+
+    /// @notice Invariant: Only registered secrets can be revealed
+    function invariant_onlyRegisteredSecretsCanBeRevealed() public {
+        bytes32 secretHash = keccak256(abi.encodePacked("test secret", "test salt"));
+        vm.expectRevert("Agreement does not exist");
+        store.revealSecret("test secret", "test salt", secretHash);
     }
 }
