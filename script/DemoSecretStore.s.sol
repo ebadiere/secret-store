@@ -113,23 +113,15 @@ contract DemoSecretStore is Script {
         }
     }
 
-    function getInputs() internal returns (string memory secret, string memory revealParty) {
-        try vm.envString("SECRET") returns (string memory s) {
-            secret = s;
-        } catch {
-            revert("SECRET environment variable not set. Please set it to the secret message you want to store.");
-        }
-
-        try vm.envString("REVEAL_PARTY") returns (string memory party) {
-            require(
-                keccak256(bytes(party)) == keccak256(bytes("A")) || 
-                keccak256(bytes(party)) == keccak256(bytes("B")),
-                "REVEAL_PARTY must be either 'A' or 'B'"
-            );
-            revealParty = party;
-        } catch {
-            revert("REVEAL_PARTY environment variable not set. Please set it to either 'A' or 'B'.");
-        }
+    function getInputs() internal view returns (string memory secret, string memory revealParty) {
+        secret = vm.envString("SECRET");
+        revealParty = vm.envString("REVEAL_PARTY");
+        require(bytes(secret).length > 0, "SECRET environment variable not set");
+        require(
+            keccak256(bytes(revealParty)) == keccak256(bytes("A")) ||
+            keccak256(bytes(revealParty)) == keccak256(bytes("B")),
+            "REVEAL_PARTY must be 'A' or 'B'"
+        );
     }
 
     function _hashTypedDataV4(bytes32 structHash) internal view returns (bytes32) {
