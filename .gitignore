@@ -18,5 +18,10 @@ lib/
 *.swp
 *.swo
 
-# Dotenv file
+# Environment and secrets
 .env
+.env.*
+!.env.example
+
+# Foundry keystore
+keystore/
