@@ -36,6 +36,10 @@ contract SecretStoreTest is Test {
     uint256 public PARTY_A_PRIVATE_KEY = 0x1234;
     uint256 public PARTY_B_PRIVATE_KEY = 0x5678;
 
+    // Events for testing
+    event SecretStorePaused(address indexed account);
+    event SecretStoreUnpaused(address indexed account);
+
     /// @notice Setup function run before each test
     /// @dev Creates a fresh contract instance and sets up test accounts
     function setUp() public {
@@ -568,5 +572,38 @@ contract SecretStoreTest is Test {
     {
         (partyA_, partyB_, ,) = store.agreements(secretHash);
         exists = partyA_ != address(0);
+    }
+
+    /// @notice Test pause event emission
+    /// @dev Verifies that the SecretStorePaused event is emitted with correct parameters
+    function testPauseEvent() public {
+        address pauser = makeAddr("pauser");
+        bytes32 pauserRole = store.PAUSER_ROLE();
+        vm.startPrank(address(this));
+        store.grantRole(pauserRole, pauser);
+        vm.stopPrank();
+
+        vm.startPrank(pauser);
+        vm.expectEmit(true, false, false, false);
+        emit SecretStorePaused(pauser);
+        store.pause();
+        vm.stopPrank();
+    }
+
+    /// @notice Test unpause event emission
+    /// @dev Verifies that the SecretStoreUnpaused event is emitted with correct parameters
+    function testUnpauseEvent() public {
+        address pauser = makeAddr("pauser");
+        bytes32 pauserRole = store.PAUSER_ROLE();
+        vm.startPrank(address(this));
+        store.grantRole(pauserRole, pauser);
+        vm.stopPrank();
+
+        vm.startPrank(pauser);
+        store.pause();
+        vm.expectEmit(true, false, false, false);
+        emit SecretStoreUnpaused(pauser);
+        store.unpause();
+        vm.stopPrank();
     }
 }

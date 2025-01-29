@@ -146,6 +146,14 @@ contract SecretStore is
         address revealer
     );
 
+    /// @dev Event emitted when contract is paused
+    /// @param account The address that triggered the pause
+    event SecretStorePaused(address indexed account);
+
+    /// @dev Event emitted when contract is unpaused
+    /// @param account The address that triggered the unpause
+    event SecretStoreUnpaused(address indexed account);
+
     /// @notice Register a new secret agreement between two parties
     /// @dev Gas optimizations:
     /// 1. Use calldata for signatures to avoid memory copies
@@ -291,6 +299,7 @@ contract SecretStore is
     /// @custom:security Only callable by accounts with PAUSER_ROLE
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
+        emit SecretStorePaused(msg.sender);
     }
 
     /// @notice Unpauses all contract operations
@@ -299,6 +308,7 @@ contract SecretStore is
     /// @custom:security Only callable by accounts with PAUSER_ROLE
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
+        emit SecretStoreUnpaused(msg.sender);
     }
 
     /// @notice Authorizes an upgrade to a new implementation
