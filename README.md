@@ -251,7 +251,3 @@ For detailed technical information, see:
 - [Technical Design](./docs/design.md)
 - [Contract Documentation](./src/SecretStore.sol)
 - [Test Coverage Report](./coverage.md)
-
-## License
-
-MIT
