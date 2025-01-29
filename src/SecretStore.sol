@@ -8,6 +8,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title SecretStore
 /// @notice A contract for securely storing and revealing secrets between two parties
@@ -50,11 +51,20 @@ contract SecretStore is
     /// recomputed if the chain ID changes (e.g., during a fork).
     /// This saves gas by avoiding repeated keccak256 computations
     /// for each signature verification.
-    bytes32 private _CACHED_DOMAIN_SEPARATOR;
-    uint256 private _CACHED_CHAIN_ID;
+    bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;
+    uint256 private immutable _CACHED_CHAIN_ID;
 
     string private constant SIGNING_DOMAIN = "SecretStore";
     string private constant SIGNING_VERSION = "1";
+
+    bytes32 private constant _TYPE_HASH =
+        keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        );
+
+    bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
+
+    bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
 
     /// @notice Agreement struct to store information about a registered secret
     /// @dev Optimized for gas efficiency through storage packing:
@@ -109,6 +119,7 @@ contract SecretStore is
 
     /// @notice Registers a secret hash with signatures from both parties
     /// @dev Gas optimization: We cache the agreement in memory to avoid multiple storage reads
+    /// and optimize signature verification by caching the EIP-712 hash
     /// @param secretHash Hash of the secret and salt
     /// @param partyA First party's address
     /// @param partyB Second party's address
@@ -128,7 +139,7 @@ contract SecretStore is
         require(partyB != address(0), "Invalid party B address");
         require(partyA != partyB, "Parties must be different");
 
-        // Verify signatures using EIP-712
+        // Gas optimization: Cache the struct hash to avoid recomputation
         bytes32 structHash = keccak256(
             abi.encode(
                 TYPEHASH,
@@ -138,19 +149,23 @@ contract SecretStore is
             )
         );
 
+        // Gas optimization: Cache the EIP-712 hash to avoid recomputation
         bytes32 hash = _hashTypedDataV4(structHash);
 
-        address recoveredA = hash.recover(signatureA);
-        address recoveredB = hash.recover(signatureB);
+        // Gas optimization: Verify both signatures before any state changes
+        bool validA = SignatureChecker.isValidSignatureNow(
+            partyA,
+            hash,
+            signatureA
+        );
+        bool validB = SignatureChecker.isValidSignatureNow(
+            partyB,
+            hash,
+            signatureB
+        );
 
-        require(
-            recoveredA == partyA,
-            "Invalid signature from partyA"
-        );
-        require(
-            recoveredB == partyB,
-            "Invalid signature from partyB"
-        );
+        require(validA, "Invalid signature from partyA");
+        require(validB, "Invalid signature from partyB");
 
         // Gas optimization: Write directly to storage once
         agreements[secretHash] = Agreement({
@@ -238,11 +253,7 @@ contract SecretStore is
     /// 3. No storage overhead (uses immutable variables)
     /// @return The current domain separator
     function DOMAIN_SEPARATOR() public view returns (bytes32) {
-        bytes32 domainSeparator = _CACHED_DOMAIN_SEPARATOR;
-        if (block.chainid == _CACHED_CHAIN_ID) {
-            return domainSeparator;
-        }
-        return _computeDomainSeparator();
+        return _CACHED_DOMAIN_SEPARATOR;
     }
 
     /// @dev Returns the hash of typed data for EIP-712 signatures
@@ -255,7 +266,7 @@ contract SecretStore is
         view
         returns (bytes32)
     {
-        bytes32 separator = DOMAIN_SEPARATOR();
+        bytes32 separator = _CACHED_DOMAIN_SEPARATOR;
         return keccak256(abi.encodePacked("\x19\x01", separator, structHash));
     }
 
@@ -264,16 +275,17 @@ contract SecretStore is
     /// and in the rare case of a chain ID change. The expensive keccak256
     /// operations are acceptable here since this is not in the hot path.
     /// @return The computed domain separator
-    function _computeDomainSeparator() private view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(SIGNING_DOMAIN)),
-                keccak256(bytes(SIGNING_VERSION)),
-                block.chainid,
-                address(this)
-            )
-        );
+    function _computeDomainSeparator() internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    _TYPE_HASH,
+                    _NAME_HASH,
+                    _VERSION_HASH,
+                    _CACHED_CHAIN_ID,
+                    address(this)
+                )
+            );
     }
 
     // Admin functions
@@ -316,15 +328,15 @@ contract SecretStore is
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
+    /// Also initializes immutable variables that can't be set in initialize()
     constructor() {
         _disableInitializers();
+        _CACHED_CHAIN_ID = block.chainid;
+        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
     }
 
     /// @notice Initializes the contract with an admin address
-    /// @dev Sets up roles and initializes gas-optimized components:
-    /// 1. Domain separator caching for efficient signature verification
-    /// 2. Single initialization of roles to minimize storage operations
-    /// 3. Proper initialization of storage variables to avoid future SSTOREs
+    /// @dev Sets up roles and initializes gas-optimized components
     /// @param admin The address that will have admin, pauser, and upgrader roles
     /// @custom:security This function can only be called once due to initializer modifier
     /// @custom:security For new state variables added in upgrades, create a new function with reinitializer(N)
@@ -337,9 +349,6 @@ contract SecretStore is
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(UPGRADER_ROLE, admin);
-
-        _CACHED_CHAIN_ID = block.chainid;
-        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
     }
 
     /// @notice Gap for adding new storage variables in upgrades
