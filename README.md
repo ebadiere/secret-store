@@ -178,6 +178,46 @@ cast call <PROXY_ADDRESS> "hasRole(bytes32,address)(bool)" \
   0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
 ```
 
+## Running the Demo
+
+The project includes an interactive demo that showcases the SecretStore contract's functionality. The demo walks you through:
+- Contract deployment
+- Secret registration with signatures from both parties
+- Secret revelation process
+
+### Prerequisites
+- Foundry installed and available in your PATH
+- A local Anvil node running
+
+### Running the Demo
+
+1. Start a local Anvil node:
+```shell
+anvil
+```
+
+2. In a new terminal, run the demo script:
+```shell
+# Replace "your secret message" with the secret you want to store
+SECRET="your secret message" REVEAL_PARTY="A" ./demo_runner.sh
+```
+
+The demo will:
+1. Deploy the SecretStore contract
+2. Show the contract addresses and party addresses
+3. Create and display signatures from both parties
+4. Register the secret on-chain
+5. Reveal the secret
+
+You can choose which party reveals the secret by setting `REVEAL_PARTY` to either:
+- `A` - Party A reveals the secret
+- `B` - Party B reveals the secret
+
+### Example
+```shell
+SECRET="my super secret message" REVEAL_PARTY="A" ./demo_runner.sh
+```
+
 ## Production Deployment
 
 For production deployments, follow these security best practices:
