@@ -62,7 +62,7 @@ contract SecretStoreTest is Test {
     /// @notice Test zero address admin initialization
     function testCannotInitializeWithZeroAddress() public {
         SecretStore implementation = new SecretStore();
-        vm.expectRevert("Admin cannot be zero address");
+        vm.expectRevert("Deployer cannot be zero address");
         new ERC1967Proxy(
             address(implementation),
             abi.encodeCall(SecretStore.initialize, (address(0)))
@@ -76,8 +76,8 @@ contract SecretStoreTest is Test {
             address(implementation),
             abi.encodeCall(SecretStore.initialize, (address(this)))
         );
-        SecretStore store = SecretStore(address(proxy));
-        assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(this)));
+        SecretStore newStore = SecretStore(address(proxy));
+        assertTrue(newStore.hasRole(newStore.DEFAULT_ADMIN_ROLE(), address(this)));
     }
 
     /// @notice Test basic secret registration functionality

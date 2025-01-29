@@ -66,30 +66,29 @@ contract SecretStore is
 
     bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
-    /// Also initializes immutable variables that can't be set in initialize()
+    /// @dev Empty constructor required by the UUPSUpgradeable pattern.
+    /// All initialization should happen in the initialize function.
     constructor() {
         _disableInitializers();
-        _CACHED_CHAIN_ID = block.chainid;
-        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
     }
 
-    /// @notice Initializes the contract with an admin address
-    /// @dev Sets up initial roles and EIP-712 domain separator
-    /// @param admin Address to be granted the DEFAULT_ADMIN_ROLE
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    function initialize(address admin) external initializer {
-        require(admin != address(0), "Admin cannot be zero address");
+    /// @notice Initializes the contract with the deployer address
+    /// @dev Required by the UUPSUpgradeable contract (EIP-1822). This replaces the constructor
+    /// for upgradeable contracts and can only be called once. Sets up initial roles and 
+    /// EIP-712 domain separator. The deployer receives all roles initially but should 
+    /// transfer them to the appropriate addresses (e.g., multi-sig) after deployment.
+    /// @param deployer Address to be granted all initial roles (DEFAULT_ADMIN_ROLE, PAUSER_ROLE, UPGRADER_ROLE)
+    function initialize(address deployer) external initializer {
+        require(deployer != address(0), "Deployer cannot be zero address");
         
         __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(PAUSER_ROLE, admin);
-        _grantRole(UPGRADER_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, deployer);
+        _grantRole(PAUSER_ROLE, deployer);
+        _grantRole(UPGRADER_ROLE, deployer);
 
         // Cache the domain separator and chain ID
         _CACHED_CHAIN_ID = block.chainid;
@@ -185,7 +184,8 @@ contract SecretStore is
         // Cache the EIP-712 hash to avoid recomputation
         bytes32 hash = _hashTypedDataV4(structHash);
 
-        // Verify both signatures before any state changes
+        // Verify both signatures using OpenZeppelin's SignatureChecker
+        // This supports both EOA and ERC-1271 contract signatures (e.g., multi-sigs)
         bool validA = SignatureChecker.isValidSignatureNow(
             partyA,
             hash,
@@ -302,11 +302,9 @@ contract SecretStore is
     }
 
     /// @notice Authorizes an upgrade to a new implementation
-    /// @dev Required by the UUPSUpgradeable contract (EIP-1822).
-    /// Unlike Transparent Proxy Pattern, UUPS requires the upgrade logic to be
-    /// in the implementation contract. This prevents the proxy from being upgraded
-    /// to an implementation that doesn't support upgrading, which would permanently
-    /// disable the upgrade mechanism.
+    /// @dev Required by the UUPSUpgradeable contract (EIP-1822). This replaces the constructor
+    /// for upgradeable contracts and can only be called once. The deployer receives all roles
+    /// initially but should transfer them to the appropriate addresses (e.g., multi-sig) after deployment.
     /// 
     /// Security notes:
     /// 1. Only UPGRADER_ROLE can perform upgrades
