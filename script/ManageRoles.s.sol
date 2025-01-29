@@ -57,23 +57,14 @@ contract ManageRoles is Script {
         vm.stopBroadcast();
     }
 
-    function _getConfig() internal view returns (RoleConfig memory config) {
+    function _getConfig() internal returns (RoleConfig memory config) {
         if (block.chainid == 31337) {
             // ====== Local Testing Configuration ======
-            // Using Anvil's default accounts:
-            // Account #0 (deployer): 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-            // Account #1 (multi-sig): 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
-            // Account #2 (role recipient): 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
-            
-            // Use the last deployed proxy address or set manually for testing
-            config.proxyAddress = address(0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512);  // Default Anvil deployment
-            
-            // Multi-sig is Account #1
-            config.senderKey = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
+            // Get configuration from environment variables or use defaults
+            config.proxyAddress = vm.envOr("CONTRACT_ADDRESS", address(0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512));
+            config.account = vm.envOr("ACCOUNT", address(0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC));
+            config.senderKey = vm.envOr("PRIVATE_KEY", uint256(0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d));
             config.sender = vm.addr(config.senderKey);
-            
-            // New role recipient is Account #2
-            config.account = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
             
             // Default to granting PAUSER_ROLE for testing
             config.role = SecretStore(config.proxyAddress).PAUSER_ROLE();
