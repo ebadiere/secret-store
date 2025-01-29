@@ -273,10 +273,14 @@ contract SecretStore is
         return _CACHED_CHAIN_ID;
     }
 
-    /// @notice Returns the implementation contract type hash
-    /// @dev Gas optimization: Made this function pure instead of view
-    /// since it doesn't read state
-    /// @return bytes32 The implementation type hash
+    /// @notice Returns the implementation slot specified in EIP-1822 for UUPS proxies
+    /// @dev Implementation of the EIP-1822 Universal Upgradeable Proxy Standard (UUPS)
+    /// The returned UUID is keccak256("PROXIABLE"), which is a standardized storage slot
+    /// where the proxy contract stores the implementation address. This standardization:
+    /// 1. Prevents storage collisions between proxy and implementation contracts
+    /// 2. Ensures upgrade safety by verifying the new implementation supports UUPS
+    /// 3. Provides universal compatibility with all UUPS proxies
+    /// @return bytes32 The implementation storage slot (keccak256("PROXIABLE"))
     function proxiableUUID() external pure override returns (bytes32) {
         return 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
     }
