@@ -172,6 +172,23 @@ Both demos will show:
 
 ## Production Deployment
 
+### Prerequisites
+1. Set up required environment variables:
+```bash
+# RPC endpoint for target network
+export RPC_URL="https://your-rpc-endpoint"
+
+# For contract verification
+export ETHERSCAN_KEY="your-etherscan-api-key"
+export VERIFIER_URL="https://api.etherscan.io/api"
+
+# Multisig wallet address that will receive admin roles
+export MULTISIG_ADDRESS="0x..."
+
+# For non-hardware wallet deployment
+export PRIVATE_KEY="your-private-key"  # Only if not using hardware wallet
+```
+
 ### Option 1: Using Hardware Wallet (Recommended)
 For secure production deployment, use a hardware wallet like Ledger:
 
@@ -187,39 +204,51 @@ forge script script/Deploy.s.sol \
     --etherscan-api-key $ETHERSCAN_KEY
 ```
 
+### Option 2: Using Private Key
+```bash
+# Deploy using private key (less secure)
+forge script script/Deploy.s.sol \
+    --rpc-url $RPC_URL \
+    --broadcast \
+    --private-key $PRIVATE_KEY \
+    --verify \
+    --verifier-url $VERIFIER_URL \
+    --etherscan-api-key $ETHERSCAN_KEY
+```
+
+### Deployment Process
+The deployment script will:
+1. Deploy implementation contract
+2. Deploy proxy contract
+3. Initialize with deployer as temporary admin
+4. Transfer all roles to multisig wallet:
+   - DEFAULT_ADMIN_ROLE
+   - UPGRADER_ROLE
+   - PAUSER_ROLE
+5. Renounce all deployer roles
+6. Verify role configuration:
+   - Confirm multisig has all required roles
+   - Verify deployer has no remaining roles
+   - Check no roles assigned to zero address
+
+### Post-Deployment Verification
+After deployment, verify:
+1. Contract addresses are correct
+2. Multisig has received all roles
+3. Deployer has no remaining roles
+4. Contract is properly initialized
+
+You can verify the role setup using the provided script:
+```bash
+forge script script/VerifyRoles.s.sol \
+    --rpc-url $RPC_URL \
+    --sig "verify(address)" $PROXY_ADDRESS
+```
+
 The `--hd-paths` option specifies which account to use on your Ledger:
 - `m/44'/60'/0'/0/0` - First Ethereum account
 - `m/44'/60'/0'/0/1` - Second Ethereum account
 - `m/44'/60'/0'/0/2` - Third Ethereum account
-
-This follows the BIP44 standard where:
-- `44'` - Purpose (BIP44)
-- `60'` - Coin type (Ethereum)
-- `0'` - Account index
-- `0` - Change (external chain)
-- `0` - Address index
-
-Make sure to:
-1. Connect your Ledger device
-2. Open the Ethereum app on your Ledger
-3. Enable "Debug data" or "Contract data" in the Ethereum app settings
-
-### Option 2: Using Private Key (Development Only)
-For development or testing environments only:
-
-```bash
-# Deploy using private key (NOT recommended for production)
-export PRIVATE_KEY=<your-private-key>  # Don't store private keys in env vars in production!
-forge script script/Deploy.s.sol --rpc-url $RPC_URL --broadcast
-
-# Run emergency controls
-forge script script/EmergencyControls.s.sol --rpc-url $RPC_URL --broadcast
-
-# Manage roles
-forge script script/ManageRoles.s.sol --rpc-url $RPC_URL --broadcast
-```
-
-**⚠️ Security Warning**: Never store private keys in environment variables or commit them to version control in production. Always use a hardware wallet for production deployments.
 
 ## Administration
 
