@@ -218,6 +218,46 @@ You can choose which party reveals the secret by setting `REVEAL_PARTY` to eithe
 SECRET="my super secret message" REVEAL_PARTY="A" ./demo_runner.sh
 ```
 
+## Using Remix
+
+You can also try the SecretStore contract using Remix IDE. Follow these steps:
+
+1. Open [Remix IDE](https://remix.ethereum.org)
+2. Create a new workspace and import these files:
+   - `src/SecretStore.sol`
+   - `script/RemixDemo.sol`
+   - Required OpenZeppelin contracts (use the "Import from GitHub" feature)
+
+3. Deploy the contracts:
+   ```
+   a. Deploy SecretStore.sol first (this is the implementation)
+   b. Copy the deployed implementation address
+   c. Deploy RemixDemo.sol with the implementation address
+   d. Call initialize() on RemixDemo with your address as admin
+   e. Get the proxy address using getProxy()
+   ```
+
+4. Interact with the contract:
+   ```
+   a. Use "At Address" with the proxy address to load SecretStore interface
+   b. You can now call registerSecret and revealSecret through this interface
+   ```
+
+Note: For testing in Remix, you can use these test values:
+```solidity
+// Example values for registerSecret:
+secretHash: 0x922f3a9b8395b8a3daad2e2c7228776744795bb8ce8c1d3d5c40d6e510497ef2
+partyA: <your current address>
+partyB: <another test address>
+signatureA: 0x3e02b0648580351c72ce0132f6f8eebb4def5cffe27a4b4815de785a675fccdd6fe9630014a250bfa6ee35a379a76e284560433c1a219aecb78183ec9cc5cb2d1c
+signatureB: 0xd0a9aa04d2c2afcc67027da12e06af7df56fc2d5b1cd37e8065cc32c3beb2caf4c0a7480b0530ad0b5612e55ca927faae0e813934fdd1e7ae7c6fe5a4e117d5d1b
+
+// Example values for revealSecret:
+secret: "my super secret message"
+salt: 0x000000000000000000000000000000000000000000000000000000000000007b
+secretHash: 0x922f3a9b8395b8a3daad2e2c7228776744795bb8ce8c1d3d5c40d6e510497ef2
+```
+
 ## Production Deployment
 
 For production deployments, follow these security best practices:
