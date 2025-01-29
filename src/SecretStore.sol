@@ -302,8 +302,17 @@ contract SecretStore is
     }
 
     /// @notice Authorizes an upgrade to a new implementation
-    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
-    /// which has optimized role checking
+    /// @dev Required by the UUPSUpgradeable contract (EIP-1822).
+    /// Unlike Transparent Proxy Pattern, UUPS requires the upgrade logic to be
+    /// in the implementation contract. This prevents the proxy from being upgraded
+    /// to an implementation that doesn't support upgrading, which would permanently
+    /// disable the upgrade mechanism.
+    /// 
+    /// Security notes:
+    /// 1. Only UPGRADER_ROLE can perform upgrades
+    /// 2. The function MUST be present in new implementations
+    /// 3. If removed, the contract becomes non-upgradeable
+    /// 
     /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(address newImplementation)
         internal
