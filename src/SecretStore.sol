@@ -47,8 +47,13 @@ contract SecretStore is
     // EIP-712 type hashes
     bytes32 private constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
 
+    /// @dev Pre-computed hashes for domain separator:
+    /// _NAME_HASH = keccak256(bytes("SecretStore"))
+    /// _VERSION_HASH = keccak256(bytes("1"))
+    /// These are computed at compile time to save gas when computing
+    /// the domain separator for EIP-712 signatures
+    bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
     bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
 
     /// @dev Domain separator caching for gas optimization
@@ -58,9 +63,6 @@ contract SecretStore is
     /// for each signature verification.
     bytes32 private _CACHED_DOMAIN_SEPARATOR;
     uint256 private _CACHED_CHAIN_ID;
-
-    string private constant SIGNING_DOMAIN = "SecretStore";
-    string private constant SIGNING_VERSION = "1";
 
     /// @dev Constructor required by the UUPSUpgradeable pattern.
     /// Must be empty because:
@@ -360,9 +362,9 @@ contract SecretStore is
         return
             keccak256(
                 abi.encode(
-                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                    _NAME_HASH,
-                    _VERSION_HASH,
+                    keccak256(abi.encodePacked("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")),
+                    keccak256(abi.encodePacked("SecretStore")),
+                    keccak256(abi.encodePacked("1")),
                     _CACHED_CHAIN_ID,
                     address(this)
                 )
