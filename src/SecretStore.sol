@@ -33,6 +33,10 @@ contract SecretStore is
     PausableUpgradeable,
     ReentrancyGuardUpgradeable
 {
+    /// @dev OpenZeppelin utilities for cryptographic operations:
+    /// - ECDSA adds signature verification (e.g., hash.recover(signature))
+    /// - MessageHashUtils adds EIP-712 formatting (e.g., hash.toTypedDataHash(domainSeparator))
+    /// These make the code more readable by allowing method-style calls on bytes32 values
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
