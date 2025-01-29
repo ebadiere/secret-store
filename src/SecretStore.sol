@@ -51,8 +51,8 @@ contract SecretStore is
     /// recomputed if the chain ID changes (e.g., during a fork).
     /// This saves gas by avoiding repeated keccak256 computations
     /// for each signature verification.
-    bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;
-    uint256 private immutable _CACHED_CHAIN_ID;
+    bytes32 private _CACHED_DOMAIN_SEPARATOR;
+    uint256 private _CACHED_CHAIN_ID;
 
     string private constant SIGNING_DOMAIN = "SecretStore";
     string private constant SIGNING_VERSION = "1";
@@ -65,6 +65,36 @@ contract SecretStore is
     bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
 
     bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
+    /// Also initializes immutable variables that can't be set in initialize()
+    constructor() {
+        _disableInitializers();
+        _CACHED_CHAIN_ID = block.chainid;
+        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
+    }
+
+    /// @notice Initializes the contract with an admin address
+    /// @dev Sets up initial roles and EIP-712 domain separator
+    /// @param admin Address to be granted the DEFAULT_ADMIN_ROLE
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    function initialize(address admin) external initializer {
+        require(admin != address(0), "Admin cannot be zero address");
+        
+        __AccessControl_init();
+        __Pausable_init();
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PAUSER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
+
+        // Cache the domain separator and chain ID
+        _CACHED_CHAIN_ID = block.chainid;
+        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
+    }
 
     /// @notice Agreement struct to store information about a registered secret
     /// @dev Optimized for gas efficiency through storage packing:
@@ -243,17 +273,40 @@ contract SecretStore is
         return _CACHED_CHAIN_ID;
     }
 
-    /// @notice Returns the domain separator used in EIP-712 signatures
-    /// @dev Gas optimization: The domain separator is cached and only recomputed
-    /// if the chain ID changes. This significantly reduces gas costs for signature
-    /// verification since the domain separator is used in every signature check.
-    /// The caching strategy provides:
-    /// 1. ~4,000 gas savings per signature verification in normal operation
-    /// 2. Automatic updates if a chain fork occurs
-    /// 3. No storage overhead (uses immutable variables)
-    /// @return The current domain separator
-    function DOMAIN_SEPARATOR_OLD() public view returns (bytes32) {
-        return _CACHED_DOMAIN_SEPARATOR;
+    /// @notice Returns the implementation contract type hash
+    /// @dev Gas optimization: Made this function pure instead of view
+    /// since it doesn't read state
+    /// @return bytes32 The implementation type hash
+    function proxiableUUID() external pure override returns (bytes32) {
+        return 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+    }
+
+    /// @notice Pauses all contract operations
+    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
+    /// which has optimized role checking
+    /// @custom:security Only callable by accounts with PAUSER_ROLE
+    function pause() external onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    /// @notice Unpauses all contract operations
+    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
+    /// which has optimized role checking
+    /// @custom:security Only callable by accounts with PAUSER_ROLE
+    function unpause() external onlyRole(PAUSER_ROLE) {
+        _unpause();
+    }
+
+    /// @notice Authorizes an upgrade to a new implementation
+    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
+    /// which has optimized role checking
+    /// @param newImplementation Address of the new implementation contract
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(UPGRADER_ROLE)
+    {
+        require(newImplementation != address(0), "Invalid implementation address");
     }
 
     /// @dev Returns the hash of typed data for EIP-712 signatures
@@ -286,69 +339,6 @@ contract SecretStore is
                     address(this)
                 )
             );
-    }
-
-    // Admin functions
-
-    /// @notice Pauses all contract operations
-    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
-    /// which has optimized role checking
-    /// @custom:security Only callable by accounts with PAUSER_ROLE
-    function pause() external onlyRole(PAUSER_ROLE) {
-        _pause();
-    }
-
-    /// @notice Unpauses all contract operations
-    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
-    /// which has optimized role checking
-    /// @custom:security Only callable by accounts with PAUSER_ROLE
-    function unpause() external onlyRole(PAUSER_ROLE) {
-        _unpause();
-    }
-
-    /// @notice Authorizes an upgrade to a new implementation
-    /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
-    /// which has optimized role checking
-    /// @param newImplementation Address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        onlyRole(UPGRADER_ROLE)
-    {
-        require(newImplementation != address(0), "Invalid implementation address");
-    }
-
-    /// @notice Returns the implementation contract type hash
-    /// @dev Gas optimization: Made this function pure instead of view
-    /// since it doesn't read state
-    /// @return bytes32 The implementation type hash
-    function proxiableUUID() external pure override returns (bytes32) {
-        return 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
-    }
-
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    /// @dev Prevents implementation contract from being initialized, forcing initialization through proxy
-    /// Also initializes immutable variables that can't be set in initialize()
-    constructor() {
-        _disableInitializers();
-        _CACHED_CHAIN_ID = block.chainid;
-        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
-    }
-
-    /// @notice Initializes the contract with an admin address
-    /// @dev Sets up roles and initializes gas-optimized components
-    /// @param admin The address that will have admin, pauser, and upgrader roles
-    /// @custom:security This function can only be called once due to initializer modifier
-    /// @custom:security For new state variables added in upgrades, create a new function with reinitializer(N)
-    function initialize(address admin) external initializer {
-        __AccessControl_init();
-        __Pausable_init();
-        __UUPSUpgradeable_init();
-        __ReentrancyGuard_init();
-
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(PAUSER_ROLE, admin);
-        _grantRole(UPGRADER_ROLE, admin);
     }
 
     /// @notice Gap for adding new storage variables in upgrades

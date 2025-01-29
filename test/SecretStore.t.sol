@@ -59,6 +59,27 @@ contract SecretStoreTest is Test {
         assertTrue(store.hasRole(store.UPGRADER_ROLE(), address(this)));
     }
 
+    /// @notice Test zero address admin initialization
+    function testCannotInitializeWithZeroAddress() public {
+        SecretStore implementation = new SecretStore();
+        vm.expectRevert("Admin cannot be zero address");
+        new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(SecretStore.initialize, (address(0)))
+        );
+    }
+
+    /// @notice Test proper initialization
+    function testProperInitialization() public {
+        SecretStore implementation = new SecretStore();
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(SecretStore.initialize, (address(this)))
+        );
+        SecretStore store = SecretStore(address(proxy));
+        assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(this)));
+    }
+
     /// @notice Test basic secret registration functionality
     /// @dev Verifies that a secret can be registered with valid signatures
     /// @custom:security Verifies proper EIP-712 signature validation
