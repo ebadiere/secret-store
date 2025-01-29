@@ -16,6 +16,9 @@ optimizer_runs = 20000
 gas_reports = ["SecretStore"]
 gas_reports_ignore = []
 
+# Coverage settings
+coverage_exclude = ["script/*", "test/*"]
+
 # Fuzz testing configuration
 # Each fuzz test will run this many times with different random inputs
 runs = 256  # Default is 256, increase for more thorough testing

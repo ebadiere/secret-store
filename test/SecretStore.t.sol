@@ -454,7 +454,7 @@ contract SecretStoreTest is Test {
         // Create signatures but swap them (partyA signs for partyB and vice versa)
         bytes32 structHash = keccak256(
             abi.encode(
-                store.TYPEHASH(),
+                store.AGREEMENT_TYPE_HASH(),
                 TEST_SECRET_HASH,
                 partyA,
                 partyB
@@ -532,7 +532,7 @@ contract SecretStoreTest is Test {
     {
         bytes32 structHash = keccak256(
             abi.encode(
-                AGREEMENT_TYPE_HASH,
+                store.AGREEMENT_TYPE_HASH(),
                 hash,
                 partyA,
                 partyB

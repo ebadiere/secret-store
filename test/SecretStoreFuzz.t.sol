@@ -22,7 +22,7 @@ contract SecretStoreFuzzTest is Test {
     address partyA;
     address partyB;
 
-    bytes32 constant TYPEHASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
+    bytes32 constant AGREEMENT_TYPE_HASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
 
     function setUp() public {
         // Deploy implementation and proxy
@@ -44,7 +44,7 @@ contract SecretStoreFuzzTest is Test {
 
     /// @notice Helper function to create signatures for a secret hash
     function _createSignatures(bytes32 secretHash) internal view returns (bytes memory, bytes memory) {
-        bytes32 structHash = keccak256(abi.encode(TYPEHASH, secretHash, partyA, partyB));
+        bytes32 structHash = keccak256(abi.encode(AGREEMENT_TYPE_HASH, secretHash, partyA, partyB));
         bytes32 digest = MessageHashUtils.toTypedDataHash(store.DOMAIN_SEPARATOR(), structHash);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);

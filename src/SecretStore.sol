@@ -38,15 +38,15 @@ contract SecretStore is
 
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant TYPEHASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
+    bytes32 public constant AGREEMENT_TYPE_HASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
 
     // EIP-712 type hashes
     bytes32 private constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 private constant AGREEMENT_TYPE_HASH =
-        keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
-    
-    // EIP-712 domain separator
+    bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
+
+    bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
+
     /// @dev Domain separator caching for gas optimization
     /// The domain separator is cached after initialization and only
     /// recomputed if the chain ID changes (e.g., during a fork).
@@ -57,15 +57,6 @@ contract SecretStore is
 
     string private constant SIGNING_DOMAIN = "SecretStore";
     string private constant SIGNING_VERSION = "1";
-
-    bytes32 private constant _TYPE_HASH =
-        keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
-
-    bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
-
-    bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
 
     /// @dev Constructor required by the UUPSUpgradeable pattern.
     /// Must be empty because:
@@ -110,6 +101,7 @@ contract SecretStore is
     /// This packing reduces storage operations from 4 slots to 2 slots (~43% gas savings)
     /// - timestamp as uint96 supports dates until year 2^96 (far future)
     /// - blockNumber as uint64 supports very high block numbers
+    /// - partyA being address(0) indicates no agreement exists (used for existence checks)
     struct Agreement {
         address partyA;      // 20 bytes
         address partyB;      // 20 bytes
@@ -168,11 +160,11 @@ contract SecretStore is
     /// 2. Cache hashes to avoid recomputation
     /// 3. Verify signatures before state changes
     /// 4. Single storage write at the end
-    /// @param secretHash Hash of the secret and salt
+    /// @param secretHash Hash of the secret and salt, computed as keccak256(abi.encodePacked(secret, salt))
     /// @param partyA First party's address
     /// @param partyB Second party's address
-    /// @param signatureA Signature from party A
-    /// @param signatureB Signature from party B
+    /// @param signatureA EIP-712 typed signature from party A (65 bytes: r, s, v)
+    /// @param signatureB EIP-712 typed signature from party B (65 bytes: r, s, v)
     function registerSecret(
         bytes32 secretHash,
         address partyA,
@@ -190,7 +182,7 @@ contract SecretStore is
         // Cache the struct hash to avoid recomputation
         bytes32 structHash = keccak256(
             abi.encode(
-                TYPEHASH,
+                AGREEMENT_TYPE_HASH,
                 secretHash,
                 partyA,
                 partyB
@@ -238,8 +230,8 @@ contract SecretStore is
     /// 1. Use calldata for secret to avoid memory copies
     /// 2. Delete storage before events to avoid unnecessary reads
     /// @param secret The actual secret being revealed
-    /// @param salt The salt used to create the hash
-    /// @param secretHash Hash of the secret and salt
+    /// @param salt Random value used to create the hash
+    /// @param secretHash Hash of the secret and salt, must match keccak256(abi.encodePacked(secret, salt))
     function revealSecret(
         string calldata secret,
         bytes32 salt,
@@ -364,7 +356,7 @@ contract SecretStore is
         return
             keccak256(
                 abi.encode(
-                    _TYPE_HASH,
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                     _NAME_HASH,
                     _VERSION_HASH,
                     _CACHED_CHAIN_ID,

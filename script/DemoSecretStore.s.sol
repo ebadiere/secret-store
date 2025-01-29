@@ -59,7 +59,7 @@ contract DemoSecretStore is Script {
         // Create signatures from both parties
         bytes32 structHash = keccak256(
             abi.encode(
-                store.TYPEHASH(),
+                store.AGREEMENT_TYPE_HASH(),
                 secretHash,
                 partyA,
                 partyB

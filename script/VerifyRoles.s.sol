@@ -19,9 +19,9 @@ contract VerifyRoles is Script {
         bool hasPauserRole = store.hasRole(store.PAUSER_ROLE(), multiSig);
 
         console.log("Multisig roles:");
-        console.log("- DEFAULT_ADMIN_ROLE:", hasAdminRole ? "✓" : "✗");
-        console.log("- UPGRADER_ROLE:", hasUpgraderRole ? "✓" : "✗");
-        console.log("- PAUSER_ROLE:", hasPauserRole ? "✓" : "✗");
+        console.log("- DEFAULT_ADMIN_ROLE:", hasAdminRole ? "[YES]" : "[NO]");
+        console.log("- UPGRADER_ROLE:", hasUpgraderRole ? "[YES]" : "[NO]");
+        console.log("- PAUSER_ROLE:", hasPauserRole ? "[YES]" : "[NO]");
 
         // Check deployer roles (should be none)
         address deployer = msg.sender;
@@ -29,20 +29,20 @@ contract VerifyRoles is Script {
         bool noDeployerUpgrader = !store.hasRole(store.UPGRADER_ROLE(), deployer);
         bool noDeployerPauser = !store.hasRole(store.PAUSER_ROLE(), deployer);
 
-        console.log("\nDeployer roles (should all be ✓ for none):");
-        console.log("- No DEFAULT_ADMIN_ROLE:", noDeployerAdmin ? "✓" : "✗");
-        console.log("- No UPGRADER_ROLE:", noDeployerUpgrader ? "✓" : "✗");
-        console.log("- No PAUSER_ROLE:", noDeployerPauser ? "✓" : "✗");
+        console.log("\nDeployer roles (should all be [YES] for none):");
+        console.log("- No DEFAULT_ADMIN_ROLE:", noDeployerAdmin ? "[YES]" : "[NO]");
+        console.log("- No UPGRADER_ROLE:", noDeployerUpgrader ? "[YES]" : "[NO]");
+        console.log("- No PAUSER_ROLE:", noDeployerPauser ? "[YES]" : "[NO]");
 
         // Check zero address
         bool noZeroAdmin = !store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(0));
         bool noZeroUpgrader = !store.hasRole(store.UPGRADER_ROLE(), address(0));
         bool noZeroPauser = !store.hasRole(store.PAUSER_ROLE(), address(0));
 
-        console.log("\nZero address roles (should all be ✓ for none):");
-        console.log("- No DEFAULT_ADMIN_ROLE:", noZeroAdmin ? "✓" : "✗");
-        console.log("- No UPGRADER_ROLE:", noZeroUpgrader ? "✓" : "✗");
-        console.log("- No PAUSER_ROLE:", noZeroPauser ? "✓" : "✗");
+        console.log("\nZero address roles (should all be [YES] for none):");
+        console.log("- No DEFAULT_ADMIN_ROLE:", noZeroAdmin ? "[YES]" : "[NO]");
+        console.log("- No UPGRADER_ROLE:", noZeroUpgrader ? "[YES]" : "[NO]");
+        console.log("- No PAUSER_ROLE:", noZeroPauser ? "[YES]" : "[NO]");
 
         require(
             hasAdminRole && hasUpgraderRole && hasPauserRole,
@@ -57,6 +57,6 @@ contract VerifyRoles is Script {
             "Zero address has roles"
         );
 
-        console.log("\n✅ All role checks passed successfully!");
+        console.log("\n[SUCCESS] All role checks passed successfully!");
     }
 }

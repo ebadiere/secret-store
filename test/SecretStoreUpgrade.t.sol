@@ -89,7 +89,7 @@ contract SecretStoreUpgradeTest is Test {
         // Create valid signatures
         bytes32 structHash = keccak256(
             abi.encode(
-                AGREEMENT_TYPE_HASH,
+                store.AGREEMENT_TYPE_HASH(),
                 secretHash,
                 partyA,
                 partyB
