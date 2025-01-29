@@ -20,10 +20,11 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 /// @custom:security Important security notes:
 ///      1. Agreement existence is checked using partyA address. A zero address for
 ///         partyA indicates no agreement exists.
-///      2. The contract is upgradeable using UUPS pattern:
-///         - Only UPGRADER_ROLE can perform upgrades
-///         - State is preserved across upgrades via proxy storage
-///         - Initialization can only happen once on the proxy
+///      2. The contract uses UUPS (EIP-1822) for upgradeability:
+///         - Implementation address stored in proxy at keccak256("PROXIABLE")
+///         - Only UPGRADER_ROLE can perform upgrades via _authorizeUpgrade
+///         - State persists in proxy while implementation provides logic
+///         - Initialization occurs once in proxy context via initialize()
 ///         - New implementations must maintain storage layout compatibility
 contract SecretStore is
     Initializable,
@@ -66,17 +67,24 @@ contract SecretStore is
 
     bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
 
-    /// @dev Empty constructor required by the UUPSUpgradeable pattern.
-    /// All initialization should happen in the initialize function.
+    /// @dev Constructor required by the UUPSUpgradeable pattern.
+    /// Must be empty because:
+    /// 1. The implementation contract should never be initialized
+    /// 2. All initialization happens in the initialize() function on the proxy
+    /// 3. _disableInitializers() prevents the implementation from being initialized directly
+    /// This is a security measure to ensure state is only ever set in the proxy's context
     constructor() {
         _disableInitializers();
     }
 
     /// @notice Initializes the contract with the deployer address
-    /// @dev Required by the UUPSUpgradeable contract (EIP-1822). This replaces the constructor
-    /// for upgradeable contracts and can only be called once. Sets up initial roles and 
-    /// EIP-712 domain separator. The deployer receives all roles initially but should 
-    /// transfer them to the appropriate addresses (e.g., multi-sig) after deployment.
+    /// @dev Initialization function for UUPS proxy pattern (EIP-1822).
+    /// Key characteristics:
+    /// 1. Called only once when the proxy is deployed
+    /// 2. Runs in the proxy's storage context via delegatecall
+    /// 3. Protected by initializer modifier to prevent multiple initializations
+    /// 4. Sets up all OpenZeppelin upgradeable contracts
+    /// 5. Grants initial roles to deployer (should be transferred after deployment)
     /// @param deployer Address to be granted all initial roles (DEFAULT_ADMIN_ROLE, PAUSER_ROLE, UPGRADER_ROLE)
     function initialize(address deployer) external initializer {
         require(deployer != address(0), "Deployer cannot be zero address");
@@ -281,14 +289,17 @@ contract SecretStore is
         return _CACHED_CHAIN_ID;
     }
 
-    /// @notice Returns the implementation slot specified in EIP-1822 for UUPS proxies
-    /// @dev Implementation of the EIP-1822 Universal Upgradeable Proxy Standard (UUPS)
-    /// The returned UUID is keccak256("PROXIABLE"), which is a standardized storage slot
-    /// where the proxy contract stores the implementation address. This standardization:
-    /// 1. Prevents storage collisions between proxy and implementation contracts
-    /// 2. Ensures upgrade safety by verifying the new implementation supports UUPS
-    /// 3. Provides universal compatibility with all UUPS proxies
-    /// @return bytes32 The implementation storage slot (keccak256("PROXIABLE"))
+    /// @notice Identifies this contract as UUPS-compatible for proxies
+    /// @dev Required by EIP-1822 (UUPS) to prove upgrade compatibility.
+    /// This function doesn't use storage itself, but returns a magic value
+    /// (keccak256("PROXIABLE")) that:
+    /// 1. The proxy uses as a storage slot for the implementation address
+    /// 2. Acts as a "marker" to verify upgrade compatibility
+    /// 3. Standardizes where all UUPS proxies store their implementation
+    /// 
+    /// Note: This implementation contract never uses this slot - only
+    /// the proxy uses it to store our address.
+    /// @return bytes32 The magic value keccak256("PROXIABLE")
     function proxiableUUID() external pure override returns (bytes32) {
         return 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
     }
@@ -312,9 +323,9 @@ contract SecretStore is
     }
 
     /// @notice Authorizes an upgrade to a new implementation
-    /// @dev Required by the UUPSUpgradeable contract (EIP-1822). This replaces the constructor
-    /// for upgradeable contracts and can only be called once. The deployer receives all roles
-    /// initially but should transfer them to the appropriate addresses (e.g., multi-sig) after deployment.
+    /// @dev Required by the UUPSUpgradeable contract (EIP-1822) to authorize upgrades.
+    /// This function is called internally during upgrade operations to verify
+    /// that the caller has the necessary permissions to perform the upgrade.
     /// 
     /// Security notes:
     /// 1. Only UPGRADER_ROLE can perform upgrades
