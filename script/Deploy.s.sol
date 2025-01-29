@@ -48,6 +48,9 @@ contract Deploy is Script {
         // Set up roles
         _setupRoles(secretStore, config);
 
+        // Verify role setup
+        _verifyRoles(secretStore, config);
+
         vm.stopBroadcast();
 
         console.log("\nDeployment complete!");
@@ -69,6 +72,38 @@ contract Deploy is Script {
         secretStore.renounceRole(secretStore.DEFAULT_ADMIN_ROLE(), config.deployer);
         secretStore.renounceRole(secretStore.UPGRADER_ROLE(), config.deployer);
         secretStore.renounceRole(secretStore.PAUSER_ROLE(), config.deployer);
+    }
+
+    function _verifyRoles(SecretStore secretStore, DeployConfig memory config) internal view {
+        console.log("\nVerifying role configuration:");
+        console.log("------------------------");
+        
+        // Check multisig has all required roles
+        bool hasAllRoles = secretStore.hasRole(secretStore.DEFAULT_ADMIN_ROLE(), config.multiSig) &&
+                          secretStore.hasRole(secretStore.UPGRADER_ROLE(), config.multiSig) &&
+                          secretStore.hasRole(secretStore.PAUSER_ROLE(), config.multiSig);
+        
+        require(hasAllRoles, "Multisig missing required roles");
+        console.log(" Multisig has all required roles");
+
+        // Verify deployer has no roles
+        bool noDeployerRoles = !secretStore.hasRole(secretStore.DEFAULT_ADMIN_ROLE(), config.deployer) &&
+                              !secretStore.hasRole(secretStore.UPGRADER_ROLE(), config.deployer) &&
+                              !secretStore.hasRole(secretStore.PAUSER_ROLE(), config.deployer);
+        
+        require(noDeployerRoles, "Deployer still has roles");
+        console.log(" Deployer has no roles");
+
+        // Additional safety check: verify no roles granted to zero address
+        bool noZeroAddressRoles = !secretStore.hasRole(secretStore.DEFAULT_ADMIN_ROLE(), address(0)) &&
+                                 !secretStore.hasRole(secretStore.UPGRADER_ROLE(), address(0)) &&
+                                 !secretStore.hasRole(secretStore.PAUSER_ROLE(), address(0));
+        
+        require(noZeroAddressRoles, "Zero address has roles");
+        console.log(" No roles assigned to zero address");
+        
+        console.log("------------------------");
+        console.log("Role verification successful!");
     }
 
     function _getConfig() internal view returns (DeployConfig memory config) {
