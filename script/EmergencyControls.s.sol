@@ -5,11 +5,57 @@ import {Script} from "forge-std/Script.sol";
 import {SecretStore} from "../src/SecretStore.sol";
 
 /// @title EmergencyControls
-/// @notice Foundry script for emergency control operations (pause/unpause) of the SecretStore contract
-/// @dev Requires PAUSER_ROLE to execute these functions
+/// @notice Emergency circuit breaker controls for SecretStore
+/// @dev Implements critical pause functionality:
+/// 1. Emergency Pause: Halts all non-admin operations
+/// 2. Controlled Unpause: Resumes normal operation
+/// 3. Role-based access control
+///
+/// Security considerations:
+/// - Requires PAUSER_ROLE for execution
+/// - Should be executed through multi-sig in production
+/// - Logs all control operations
+///
+/// Usage:
+/// 1. Local Testing:
+///    forge script script/EmergencyControls.s.sol \
+///      --rpc-url localhost:8545 \
+///      -vvvv \
+///      --broadcast \
+///      --sig "run()" \
+///      --env-file .env.local
+///
+/// 2. Production:
+///    # First dry-run to verify:
+///    forge script script/EmergencyControls.s.sol \
+///      --rpc-url $RPC_URL \
+///      -vvvv \
+///      --sig "run()"
+///
+///    # Then execute through multi-sig:
+///    forge script script/EmergencyControls.s.sol \
+///      --rpc-url $RPC_URL \
+///      --broadcast \
+///      --sig "run()" \
+///      --verify
+///
+/// Required Environment Variables:
+/// - PRIVATE_KEY: Executor's private key
+/// - CONTRACT_ADDRESS: Deployed SecretStore address
+/// - OPERATION: Either "pause" or "unpause"
 contract EmergencyControls is Script {
-    /// @notice Pauses all operations on the SecretStore contract
-    /// @param contractAddress The address of the deployed SecretStore contract
+    /// @notice Emergency pause function
+    /// @dev Security critical operation that:
+    /// 1. Halts all non-admin contract operations
+    /// 2. Prevents new secret registrations
+    /// 3. Prevents secret revelations
+    /// 4. Maintains existing storage state
+    ///
+    /// Access Control:
+    /// - Requires PAUSER_ROLE
+    /// - Should be executed via multi-sig
+    /// - Fails if already paused
+    /// @param contractAddress The SecretStore proxy address
     function pause(address contractAddress) public {
         require(contractAddress != address(0), "Invalid contract address");
         
@@ -23,8 +69,17 @@ contract EmergencyControls is Script {
         vm.stopBroadcast();
     }
     
-    /// @notice Unpauses all operations on the SecretStore contract
-    /// @param contractAddress The address of the deployed SecretStore contract
+    /// @notice Controlled unpause function
+    /// @dev Resumes normal contract operation:
+    /// 1. Re-enables secret registration
+    /// 2. Re-enables secret revelation
+    /// 3. Maintains all stored agreements
+    ///
+    /// Access Control:
+    /// - Requires PAUSER_ROLE
+    /// - Should be executed via multi-sig
+    /// - Fails if not paused
+    /// @param contractAddress The SecretStore proxy address
     function unpause(address contractAddress) public {
         require(contractAddress != address(0), "Invalid contract address");
         
@@ -38,7 +93,17 @@ contract EmergencyControls is Script {
         vm.stopBroadcast();
     }
 
-    /// @notice Main function to run the script with command line arguments
+    /// @notice Script entry point
+    /// @dev Execution flow:
+    /// 1. Loads configuration from environment
+    /// 2. Validates operation type
+    /// 3. Executes requested operation
+    /// 4. Logs results
+    ///
+    /// Error handling:
+    /// - Validates contract address
+    /// - Validates operation type
+    /// - Proper revert messages
     function run() external {
         // Get contract address from environment
         address contractAddress = vm.envAddress("CONTRACT_ADDRESS");

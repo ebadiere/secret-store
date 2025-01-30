@@ -5,13 +5,37 @@ import "forge-std/Script.sol";
 import "../src/SecretStore.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
+/// @title SecretStore Deployment Script
+/// @notice Production-ready deployment script with security best practices
+/// @dev Implements a secure deployment process:
+/// 1. Deploys implementation contract
+/// 2. Initializes UUPS proxy
+/// 3. Sets up role-based access control
+/// 4. Transfers control to multi-sig
+///
+/// Security measures:
+/// - Multi-step role transfer
+/// - Role verification
+/// - Zero-address checks
+/// - Defense-in-depth approach
 contract Deploy is Script {
+    /// @dev Configuration for deployment process
+    /// @param deployer Address performing the deployment
+    /// @param deployerKey Private key for deployment transactions
+    /// @param multiSig Multi-signature wallet for contract control
     struct DeployConfig {
         address deployer;
         uint256 deployerKey;
         address multiSig;
     }
 
+    /// @notice Main deployment function
+    /// @dev Deployment process:
+    /// 1. Load environment-specific configuration
+    /// 2. Deploy implementation contract
+    /// 3. Deploy and initialize proxy
+    /// 4. Configure access control
+    /// 5. Verify deployment integrity
     function run() external {
         // Get deployment configuration
         DeployConfig memory config = _getConfig();
@@ -60,6 +84,14 @@ contract Deploy is Script {
         console.log("------------------------");
     }
 
+    /// @notice Role configuration function
+    /// @dev Security-focused role setup:
+    /// 1. Grant roles to multi-sig first (defense in depth)
+    /// 2. Verify multi-sig has required roles
+    /// 3. Renounce deployer roles
+    /// 4. Verify deployer has no remaining access
+    /// @param secretStore The deployed contract instance
+    /// @param config Deployment configuration
     function _setupRoles(SecretStore secretStore, DeployConfig memory config) internal {
         // Grant roles to multi-sig first (defense in depth)
         console.log("\nGranting roles to multi-sig:", config.multiSig);
@@ -74,6 +106,18 @@ contract Deploy is Script {
         secretStore.renounceRole(secretStore.PAUSER_ROLE(), config.deployer);
     }
 
+    /// @notice Role verification function
+    /// @dev Comprehensive role checks:
+    /// 1. Verify multi-sig has all required roles
+    /// 2. Verify deployer has no remaining roles
+    /// 3. Safety check for zero address
+    /// 
+    /// Critical for security:
+    /// - Prevents incomplete role transfers
+    /// - Ensures clean permission state
+    /// - Guards against common pitfalls
+    /// @param secretStore The deployed contract instance
+    /// @param config Deployment configuration
     function _verifyRoles(SecretStore secretStore, DeployConfig memory config) internal view {
         console.log("\nVerifying role configuration:");
         console.log("------------------------");
@@ -106,6 +150,25 @@ contract Deploy is Script {
         console.log("Role verification successful!");
     }
 
+    /// @notice Environment-specific configuration loader
+    /// @dev Handles two deployment scenarios:
+    /// 1. Local Development (chainId 31337):
+    ///    - Uses Anvil's deterministic accounts
+    ///    - Default deployer: Account #0
+    ///    - Default multi-sig: Account #1
+    ///    - No environment variables needed
+    ///
+    /// 2. Production Deployment:
+    ///    - Requires environment variables:
+    ///      * PRIVATE_KEY: Deployer's private key
+    ///      * MULTISIG_ADDRESS: Production multi-sig wallet
+    ///    - Validates multi-sig is not zero address
+    ///
+    /// Security considerations:
+    /// - Different configurations per environment
+    /// - Private key management
+    /// - Multi-sig validation
+    /// @return config Deployment configuration struct
     function _getConfig() internal view returns (DeployConfig memory config) {
         if (block.chainid == 31337) {
             // Local testing with Anvil
