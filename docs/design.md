@@ -89,6 +89,41 @@ SecretStore addresses broader protocol needs:
 4. **Replay Prevention**  
    Ties the signature strictly to this contract on this chain.
 
+### Signature Specifications Considered
+
+1. **EIP-712**
+   - Best for user-friendly, typed data signatures that include addresses, domain info, and unique fields
+   - Addresses replay attacks across different chains or contracts
+   - Typically the best fit for multi-field agreement requirements
+
+2. **EIP-1271**
+   - Consider if participants might be smart contracts that need to validate signatures or act as signers
+   - Adds complexity and gas overhead
+   - Not needed for our current use case with EOA participants
+
+3. **EIP-2098**
+   - Micro-optimization to compress signatures from 65 bytes to 64
+   - Saves minimal gas or storage
+   - Added complexity outweighs minor benefits for our use case
+
+4. **EIP-191**
+   - Simpler "personal_sign" approach
+   - Lacks typed data structure
+   - Less secure and user-friendly than EIP-712 for multi-field agreements
+
+5. **Meta-Transaction frameworks (EIP-2770)**
+   - Useful when needing relayer or user gas abstraction
+   - Adds unnecessary complexity for our direct two-party interaction
+
+### Decision
+For our "two parties sign a secret agreement" scenario, EIP-712 is the robust choice because it:
+- Enforces strong domain separation
+- Provides excellent wallet support and user experience
+- Prevents replay attacks effectively
+- Has become the de facto standard for structured data signing
+
+Unless there is a strong requirement for contract-based signers (EIP-1271) or signature compression (EIP-2098), EIP-712 provides the best balance of security, usability, and widespread wallet support.
+
 ---
 
 ## 5. System Architecture

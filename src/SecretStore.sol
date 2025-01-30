@@ -381,11 +381,10 @@ contract SecretStore is
     }
 
     /// @notice Gap for adding new storage variables in upgrades
-    /// @dev This gap is reserved for future storage variables to prevent collisions
-    /// @custom:security This gap should be reduced when adding new storage variables
-    /// @custom:security When adding new storage variables:
-    /// 1. Add them after existing variables but before this gap
-    /// 2. Reduce the gap size by the number of slots used
-    /// 3. Create a new reinitializer function if initialization is needed
+    /// @dev This empty reserved space is put in place to allow future versions to add new
+    /// variables without shifting down storage in the inheritance chain.
+    /// See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+    /// The size of 50 is chosen by OpenZeppelin as a reasonable upper bound for most contracts.
+    /// MUST remain at the end of the contract to ensure storage layout compatibility during upgrades.
     uint256[50] private __gap;
 }
