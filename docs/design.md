@@ -240,31 +240,32 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 
 ## 9. Security Considerations
 
-1. **Hash Privacy**  
-   - Only `secretHash` is stored on-chain, preventing observers from discovering the actual secret until reveal.  
-   - A random salt prevents brute-forcing small or guessable secrets.
+### Data Privacy
+- The actual secret is never stored on-chain and is only revealed through an explicit transaction
+- The `Agreement` struct stores only the `secretHash`, participating addresses, and timing metadata
+- Observers cannot discover the actual secret until reveal, as it is protected by the salt
 
-2. **EIP-712 Defenses**  
-   - Domain separation ties signatures to the chain ID, contract address, and version.  
-   - Structured data clarifies to users what they are signing.
+### EIP-712 Defenses
+- Domain separation ties signatures to the chain ID, contract address, and version
+- Structured data clarifies to users what they are signing
 
-3. **Upgrade Security**  
-   - Only `UPGRADER_ROLE` can call `_authorizeUpgrade`.  
-   - Adheres to a stable storage layout.
+### Upgrade Security
+- Only `UPGRADER_ROLE` can call `_authorizeUpgrade`
+- Adheres to a stable storage layout
 
-4. **Emergency Pause**  
-   - Pausable contract halts key functions if a vulnerability arises.
+### Emergency Pause
+- Pausable contract halts key functions if a vulnerability arises
 
-5. **Reentrancy Protection**  
-   - Uses `nonReentrant` modifier on state-changing functions as a defensive measure:
-     - **Future-Proofing**: Protects against potential reentrancy vectors in future upgrades
-     - **Human Oversight**: Guards against accidental introduction of vulnerable patterns
-     - **Defense in Depth**: Adds an extra layer of security at minimal cost
-     - **Low Overhead**: The small gas cost is justified by the security benefit
-   - Note: This protection may be removed if security auditors determine it's unnecessary
+### Reentrancy Protection
+- Uses `nonReentrant` modifier on state-changing functions as a defensive measure:
+  - **Future-Proofing**: Protects against potential reentrancy vectors in future upgrades
+  - **Human Oversight**: Guards against accidental introduction of vulnerable patterns
+  - **Defense in Depth**: Adds an extra layer of security at minimal cost
+  - **Low Overhead**: The small gas cost is justified by the security benefit
+- Note: This protection may be removed if security auditors determine it's unnecessary
 
-6. **No Partial Agreements**  
-   - Registration is atomic with both signatures required in a single transaction.
+### No Partial Agreements
+- Registration is atomic with both signatures required in a single transaction
 
 ---
 
