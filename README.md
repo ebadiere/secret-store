@@ -1,5 +1,10 @@
 # SecretStore Smart Contract
 
+**Looking for in-depth details about this contract’s architecture and security?**  
+Head to the [**design doc**](./docs/design.md) right away for a deep dive into the security model, upgrade patterns, and overall technical specifications.
+
+## Overview
+
 A secure smart contract implementation that enables two parties to store and reveal secrets on-chain, satisfying these key requirements:
 - Store secrets that both parties have agreed to
 - Keep secrets hidden until revelation
