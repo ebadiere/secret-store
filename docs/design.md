@@ -4,8 +4,14 @@
 
 The **SecretStore** protocol is designed to meet the following core requirements:
 
-1. **Mutual Secret Storage**  
-   Enables any two parties (Party A and Party B) to store a mutually agreed secret on-chain.
+1. **Two-Party Agreement**: Any two parties can agree and sign off on a secret
+2. **Single Transaction**: Secret registration must occur in a single transaction to guarantee same-block execution
+3. **Secret Storage**: Secrets must be stored in a way that prevents value observation on-chain
+4. **Revelation Rights**: Either party can reveal the secret at any time
+5. **Deletion**: Upon revelation, the stored secret should be deleted
+6. **Block Timing**: Agreement must be provable at a specific block number
+7. **Event Emission**: The contract must emit an event upon secret revelation, including the revealer's address and the secret value. Additionally, as a best practice for state changes, the contract also emits events for secret registration.
+8. **Signature Validation**: Must validate off-chain signatures on-chain
 
 2. **Agreement Proof**  
    Proves that both parties agreed to the secret at a specific block.
