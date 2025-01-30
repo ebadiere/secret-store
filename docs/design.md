@@ -268,7 +268,39 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 
 ---
 
-## 10. Gas Optimization
+## 10. Upgrade Process and Safety Requirements
+
+### Critical: Pre-Upgrade Requirements
+Due to EIP-712's domain separator including contract version information, all secrets MUST be revealed before performing an upgrade. This requirement exists because:
+
+1. **Signature Invalidation**: An upgrade would invalidate existing signatures, making it impossible to reveal previously registered secrets
+2. **Data Loss Risk**: Any unrevealed secrets would become permanently inaccessible
+
+### Upgrade Process
+To safely upgrade the contract:
+
+1. **Announcement**: Notify all users of the upcoming upgrade with sufficient notice
+2. **Secret Revelation Period**: Allow time for all parties to reveal their secrets
+3. **Verification**: Confirm no active secrets remain in storage
+4. **Upgrade Execution**: Only proceed with upgrade after all secrets are revealed
+
+### Storage Compatibility
+The contract uses the UUPS proxy pattern for upgrades. New implementations must:
+
+1. Maintain the same storage layout for existing state variables
+2. Preserve all events and their signatures
+3. Keep access control roles and permissions consistent
+
+### Upgrade Restrictions
+To protect user interests:
+1. Only addresses with the `UPGRADER_ROLE` can perform upgrades
+2. Upgrades must be announced in advance
+3. New implementations must be thoroughly tested
+4. Consider implementing a timelock mechanism for future upgrades
+
+---
+
+## 11. Gas Optimization
 
 - **Storage Packing**  
   - The `Agreement` struct is designed to occupy minimal slots.
@@ -284,7 +316,7 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 
 ---
 
-## 11. Limitations and Considerations
+## 12. Limitations and Considerations
 
 ### Secret Size Limitations
 - The `secretHash` is a fixed `bytes32` value but does not limit the secret size
@@ -303,7 +335,7 @@ Note: Actual gas costs and size limits will vary based on network conditions and
 
 ---
 
-## 12. Monitoring and Maintenance
+## 13. Monitoring and Maintenance
 
 - **Event Indexing**  
   - Off-chain services track `SecretRegistered(secretHash, partyA, partyB)` and `SecretRevealed(secretHash, revealer, secret)`.
@@ -316,28 +348,30 @@ Note: Actual gas costs and size limits will vary based on network conditions and
 
 ---
 
-## 13. Possible Future Enhancements
-
-1. **Salt Parameter Validation**  
-   - Consider adding more explicit checks on `salt` during `revealSecret`, such as validating its length or ensuring it follows a particular format. This could help catch user errors or maliciously short salt values that might simplify brute-force attacks.
-
-2. **Timelock for Upgrades**  
-   - Implement a timelock that enforces a delay between scheduling and executing an upgrade. This approach gives stakeholders time to review proposed changes and cancel any potentially harmful upgrades before they take effect.
-
----
-
-## 14. Limitations
-
-- **Public Blockchain**  
-  - Once revealed, the secret is publicly visible in transaction logs.
-
-- **Off-Chain Coordination**  
-  - Both signatures must be obtained before registration, which can cause delays if a party is unresponsive.
-
----
-
-## Conclusion
+## 14. Conclusion
 
 The **SecretStore** contract provides a **secure, upgradeable** solution for two-party secret storage, aligned with atomic registration and delayed revelation. By leveraging **EIP-712** signatures, **salted hashing**, and **UUPS**-based upgradeability, the system maintains robust security, ensures confidentiality until reveal, and offers emergency controls for swift response.
 
 A **security-first** methodology pervades this design, from preventing replay attacks to requiring full signatures in a single transaction, all while incorporating role-based access control and pausable operations. Future enhancements, such as explicit salt validation and upgrade timelocks, can further strengthen the platform’s resilience and user confidence.
+
+---
+
+## 15. Possible Future Enhancements
+
+### Version-Aware Signature Validation
+A more sophisticated version handling system could be implemented to allow secrets to persist across upgrades. This would:
+1. Store the contract version with each agreement
+2. Use agreement-specific versions when validating reveal signatures
+3. Allow upgrades without requiring all secrets to be revealed first
+
+However, this enhancement should only be implemented with:
+- A thorough security audit
+- Comprehensive upgrade testing
+- A timelock mechanism to ensure proper migration
+- Clear documentation of version compatibility
+
+### Additional Features
+
+1. **Automated Secret Deletion**
+2. **Timelock for Upgrades**
+   - Implement a timelock that enforces a delay between scheduling and executing an upgrade. This approach gives stakeholders time to review proposed changes and cancel any potentially harmful upgrades before they take effect.
