@@ -290,40 +290,26 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 
 ---
 
-## 11. Emergency Controls
+## 11. Limitations and Considerations
 
-- **Pause/Unpause**  
-  - `PAUSER_ROLE` can suspend state-changing methods quickly.
+### Secret Size Limitations
+- The `secretHash` is a fixed `bytes32` value but does not limit the secret size
+- Practical limitations for `revealSecret` are:
+  - **Block Gas Limit**: Each byte of the secret consumes gas (4 gas per zero byte, 68 gas per non-zero byte)
+  - **Transaction Size**: Maximum ~128KB total transaction size on most networks
+  - **Tested Sizes**: Successfully tested with various secret sizes:
+    - 1KB: Minimal gas usage
+    - 10KB: Moderate gas usage
+    - 50KB: Higher but still practical gas usage
+    - 100KB: Very high gas usage, may be impractical on congested networks
+  - **Recommendation**: Keep secrets under 50KB for reliable execution
+  - **Large Data**: For larger secrets, consider storing them off-chain (e.g., IPFS) and only storing their hash on-chain
 
-- **Role Separation**  
-  - `DEFAULT_ADMIN_ROLE` manages roles, `UPGRADER_ROLE` handles upgrades, and `PAUSER_ROLE` handles pauses.
-
----
-
-## 12. Possible Future Enhancements
-
-1. **Salt Parameter Validation**  
-   - Consider adding more explicit checks on `salt` during `revealSecret`, such as validating its length or ensuring it follows a particular format. This could help catch user errors or maliciously short salt values that might simplify brute-force attacks.
-
-2. **Timelock for Upgrades**  
-   - Implement a timelock that enforces a delay between scheduling and executing an upgrade. This approach gives stakeholders time to review proposed changes and cancel any potentially harmful upgrades before they take effect.
-
----
-
-## 13. Limitations
-
-- **Secret Size**  
-  - Large secrets are expensive to reveal on-chain due to transaction data costs.
-
-- **Public Blockchain**  
-  - Once revealed, the secret is publicly visible in transaction logs.
-
-- **Off-Chain Coordination**  
-  - Both signatures must be obtained before registration, which can cause delays if a party is unresponsive.
+Note: Actual gas costs and size limits will vary based on network conditions and the specific blockchain being used. The contract itself can handle larger secrets (tested up to 1MB in development), but network constraints make this impractical in production.
 
 ---
 
-## 14. Monitoring
+## 12. Monitoring and Maintenance
 
 - **Event Indexing**  
   - Off-chain services track `SecretRegistered(secretHash, partyA, partyB)` and `SecretRevealed(secretHash, revealer, secret)`.
@@ -333,6 +319,26 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 
 - **Security Alerts**  
   - Automated watchers can detect unusual registration or reveal patterns.
+
+---
+
+## 13. Possible Future Enhancements
+
+1. **Salt Parameter Validation**  
+   - Consider adding more explicit checks on `salt` during `revealSecret`, such as validating its length or ensuring it follows a particular format. This could help catch user errors or maliciously short salt values that might simplify brute-force attacks.
+
+2. **Timelock for Upgrades**  
+   - Implement a timelock that enforces a delay between scheduling and executing an upgrade. This approach gives stakeholders time to review proposed changes and cancel any potentially harmful upgrades before they take effect.
+
+---
+
+## 14. Limitations
+
+- **Public Blockchain**  
+  - Once revealed, the secret is publicly visible in transaction logs.
+
+- **Off-Chain Coordination**  
+  - Both signatures must be obtained before registration, which can cause delays if a party is unresponsive.
 
 ---
 

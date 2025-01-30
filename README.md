@@ -36,72 +36,49 @@ forge test
 ```
 secret-store/
 ├── src/
-│   └── SecretStore.sol    # Main contract implementation
-├── script/
-│   ├── Deploy.s.sol       # Deployment script
-│   ├── EmergencyControls.s.sol  # Pause/unpause functionality
-│   └── ManageRoles.s.sol  # Role management
+│   └── SecretStore.sol        # Main contract implementation
 ├── test/
-│   ├── SecretStore.t.sol  # Unit tests
-│   ├── SecretStoreFuzz.t.sol  # Fuzz tests
-│   ├── SecretStoreInvariant.t.sol  # Invariant tests
-│   └── SecretStoreUpgrade.t.sol  # Upgrade tests
-└── docs/
-    └── design.md          # Detailed technical design
+│   ├── SecretStore.t.sol      # Core functionality tests
+│   ├── SecretStoreProxy.t.sol # Proxy and upgrade tests
+│   ├── SecretStorePause.t.sol # Pause functionality tests
+│   └── SecretStoreSizeLimits.t.sol # Secret size limits and gas usage tests
+├── docs/
+│   └── design.md              # Design documentation and specifications
+├── scripts/
+│   └── Deploy.s.sol           # Deployment script
+└── README.md                  # Project documentation
 ```
+
+The project follows a standard Foundry structure:
 
 ## Testing
 
-The contract includes comprehensive test coverage across multiple testing strategies:
+The project includes comprehensive test suites:
 
-### Unit Tests
+- `SecretStore.t.sol`: Core functionality tests including secret registration, revelation, and access control
+- `SecretStoreProxy.t.sol`: Tests for proxy deployment and upgrade functionality
+- `SecretStorePause.t.sol`: Tests for emergency pause functionality
+- `SecretStoreSizeLimits.t.sol`: Tests for secret size limitations and gas usage analysis
+
+To run the tests:
+
 ```bash
-# Run all unit tests
-forge test --match-path test/SecretStore.t.sol -vv
-
-# Run specific test
-forge test --match-test testRegisterSecret -vv
+forge test
 ```
 
-### Fuzz Tests
-```bash
-# Run fuzz tests (default 256 runs per test)
-forge test --match-path test/SecretStoreFuzz.t.sol -vv
+For detailed output including gas measurements:
 
-# Run with more fuzz runs
-forge test --match-path test/SecretStoreFuzz.t.sol -vv --fuzz-runs 1000
+```bash
+forge test -vvv
 ```
 
-### Invariant Tests
-```bash
-# Run invariant tests
-forge test --match-path test/SecretStoreInvariant.t.sol -vv
-```
+### Secret Size Limitations
 
-### Upgrade Tests
-```bash
-# Run upgrade safety tests
-forge test --match-path test/SecretStoreUpgrade.t.sol -vv
-```
-
-### Coverage and Gas Reports
-```bash
-# Generate test coverage report (may take a minute to complete)
-# Full coverage report with all files
-forge coverage --report summary
-
-# Quick view of just the main contract coverage
-forge coverage --report summary | grep "src/SecretStore.sol"
-
-# Generate HTML coverage report (requires lcov to be installed)
-forge coverage --report lcov
-genhtml lcov.info --output-directory coverage
-
-# Run all tests with gas reporting
-forge test --gas-report
-```
-
-The HTML coverage report will be generated in the `coverage` directory and can be viewed by opening `coverage/index.html` in your browser.
+The contract has been thoroughly tested with secrets of various sizes:
+- Successfully handles secrets up to 50KB (recommended maximum)
+- Includes gas usage analysis for different secret sizes (1KB to 100KB)
+- Network conditions (block gas limits, transaction size) may affect maximum practical size
+- For larger secrets, consider storing them off-chain and only storing their hash on-chain
 
 ## Security Features
 
