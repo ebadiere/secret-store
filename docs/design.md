@@ -53,24 +53,57 @@ As this contract is designed for production use within a protocol ecosystem, add
 ### Core Components
 
 1. **UUPS Proxy (EIP-1822)**
-   - Enables contract upgradeability while maintaining state
-   - Chosen over Transparent Proxy Pattern for:
-     - Gas efficiency (no delegate call overhead)
-     - Simpler authorization (upgrade logic in implementation)
-     - Better security (can't be bricked by admin)
-   - Implementation includes required `upgradeTo` and `upgradeToAndCall` functions
+   - Universal Upgradeable Proxy Standard for contract upgradeability
+   - Key Features:
+     - Implementation address stored in standard slot (`keccak256("PROXIABLE")`)
+     - Upgrade logic in implementation contract, not proxy
+     - No admin address stored in proxy
+     - Lower gas costs for regular function calls
+   - Advantages over Transparent Proxy:
+     - ~2100 gas saved per call (no delegate call overhead)
+     - More secure (can't be bricked by admin mistakes)
+     - Self-contained upgrade logic (easier to audit)
+     - Universal verification through `proxiableUUID()`
+   - Implementation Details:
+     - Uses OpenZeppelin's `UUPSUpgradeable` base contract
+     - Upgrade restricted to `UPGRADER_ROLE`
+     - State variables properly initialized through initializer pattern
+     - Chain ID cached and monitored for cross-chain deployments
 
-2. **Typed Signatures (EIP-712)**
-   - Provides human-readable signature data
-   - Prevents signature replay across chains and contracts
-   - Domain separator includes:
-     - Contract name and version
-     - Chain ID
-     - Contract address
-   - Type hash for agreements:
-     ```solidity
-     Agreement(bytes32 secretHash,address partyA,address partyB)
-     ```
+2. **EIP-712: Typed Structured Data Hashing and Signing**
+   - Secure signature scheme for human-readable data
+   - Components:
+     - Domain Separator: Prevents cross-chain/contract replay attacks
+       ```solidity
+       keccak256(abi.encode(
+           DOMAIN_TYPE_HASH,
+           keccak256(bytes("SecretStore")),  // Name hash
+           keccak256(bytes("1")),            // Version hash
+           block.chainid,
+           address(this)
+       ))
+       ```
+     - Structured Data: Type-safe agreement format
+       ```solidity
+       struct Agreement {
+           address partyA;
+           address partyB;
+           bytes32 secretHash;
+       }
+       ```
+   - Security Benefits:
+     - Human-readable signing messages in wallets
+     - Domain separation prevents replay across:
+       - Different contracts (address)
+       - Different versions (version string)
+       - Different chains (chainId)
+       - Different contract instances (address)
+     - Type safety prevents parameter confusion
+   - Gas Optimizations:
+     - Domain separator cached after initialization
+     - Only recomputed on chain ID changes
+     - Type hashes computed at compile time
+     - Signature verification using OpenZeppelin's ECDSA
 
 3. **Access Control**
    - Role-based permissions using OpenZeppelin's AccessControl
