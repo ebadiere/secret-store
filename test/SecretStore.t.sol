@@ -461,7 +461,7 @@ contract SecretStoreTest is Test {
             )
         );
         bytes32 digest = MessageHashUtils.toTypedDataHash(
-            store.DOMAIN_SEPARATOR(),
+            store.DOMAIN_SEPARATOR(),  // Using first contract's domain
             structHash
         );
 
@@ -497,6 +497,57 @@ contract SecretStoreTest is Test {
         // Try to register with invalid partyB signature
         vm.expectRevert("Invalid signature from partyB");
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, validSigA, invalidSigB);
+    }
+
+    /// @notice Test verifyingContract protection in EIP-712
+    function testCannotReuseSignatureAcrossContracts() public {
+        // Deploy a second instance of SecretStore with proper initialization
+        SecretStore implementation = new SecretStore();
+        address storeAdmin = makeAddr("storeAdmin");
+        
+        // Deploy proxy and initialize
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(SecretStore.initialize, (storeAdmin))
+        );
+        SecretStore storeTwo = SecretStore(address(proxy));
+        
+        vm.startPrank(storeAdmin);
+        storeTwo.grantRole(store.DEFAULT_ADMIN_ROLE(), storeAdmin);
+        storeTwo.grantRole(store.UPGRADER_ROLE(), storeAdmin);
+        storeTwo.grantRole(store.PAUSER_ROLE(), storeAdmin);
+        vm.stopPrank();
+
+        // Create signatures using domain separator from first contract
+        bytes32 structHash = keccak256(
+            abi.encode(
+                store.AGREEMENT_TYPE_HASH(),
+                TEST_SECRET_HASH,
+                partyA,
+                partyB
+            )
+        );
+        bytes32 digest = MessageHashUtils.toTypedDataHash(
+            store.DOMAIN_SEPARATOR(),  // Using first contract's domain
+            structHash
+        );
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(PARTY_A_PRIVATE_KEY, digest);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_PRIVATE_KEY, digest);
+
+        bytes memory sigA = abi.encodePacked(r1, s1, v1);
+        bytes memory sigB = abi.encodePacked(r2, s2, v2);
+
+        // Try to use these signatures with the second contract
+        vm.expectRevert("Invalid signature from partyA");
+        storeTwo.registerSecret(TEST_SECRET_HASH, partyA, partyB, sigA, sigB);
+
+        // Verify the signatures still work with the original contract
+        store.registerSecret(TEST_SECRET_HASH, partyA, partyB, sigA, sigB);
+        
+        // Check agreement exists in original contract
+        (address storedPartyA, ) = _getParties(TEST_SECRET_HASH);
+        assertEq(storedPartyA, partyA, "Agreement should be registered in original contract");
     }
 
     /// @notice Helper to format AccessControl error message

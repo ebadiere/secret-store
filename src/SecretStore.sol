@@ -42,6 +42,15 @@ contract SecretStore is
 
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    /// @dev EIP-712 type hash for Agreement struct
+    /// This defines the structure of data being signed and ensures type safety.
+    /// When users sign messages, their wallet will display this structure:
+    /// Agreement(
+    ///   secretHash: bytes32,
+    ///   partyA: address,
+    ///   partyB: address
+    /// )
     bytes32 public constant AGREEMENT_TYPE_HASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
 
     // EIP-712 type hashes

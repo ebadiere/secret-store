@@ -23,6 +23,7 @@ both parties' agreement must be atomic. This prevents several potential attack v
 4. **Party Withdrawal**: One party cannot back out after the other has committed
 
 This is achieved by:
+
 - Collecting both signatures off-chain
 - Submitting both signatures in a single transaction
 - Verifying both signatures atomically
@@ -33,6 +34,7 @@ Framework choice was flexible, with permission to use truffle, hardhat, or forge
 As this contract is designed for production use within a protocol ecosystem, additional requirements were considered:
 
 1. **Protocol Integration**
+
    - Security-first design approach:
      - EIP-712 for human-readable, replay-resistant signatures
      - Salted hashes to prevent rainbow table attacks
@@ -53,6 +55,7 @@ As this contract is designed for production use within a protocol ecosystem, add
 ### Core Components
 
 1. **UUPS Proxy (EIP-1822)**
+
    - Universal Upgradeable Proxy Standard for contract upgradeability
    - Key Features:
      - Implementation address stored in standard slot (`keccak256("PROXIABLE")`)
@@ -71,6 +74,7 @@ As this contract is designed for production use within a protocol ecosystem, add
      - Chain ID cached and monitored for cross-chain deployments
 
 2. **EIP-712: Typed Structured Data Hashing and Signing**
+
    - Secure signature scheme for human-readable data
    - Components:
      - Domain Separator: Prevents cross-chain/contract replay attacks
@@ -128,6 +132,7 @@ mapping(bytes32 => Agreement) public agreements;
 ```
 
 The struct is carefully designed for gas optimization:
+
 - Packed into 2 storage slots (320 bits + 160 bits)
 - secretHash as mapping key for efficient lookups
 - Zero address for partyA indicates non-existent agreement
@@ -135,6 +140,7 @@ The struct is carefully designed for gas optimization:
 ### Security Considerations
 
 1. **Signature Security (EIP-712)**
+
    - Signatures are bound to:
      - Specific secret hash
      - Specific parties (addresses)
@@ -146,6 +152,7 @@ The struct is carefully designed for gas optimization:
      - Signature reuse
 
 2. **Upgrade Security (EIP-1822)**
+
    - Only UPGRADER_ROLE can perform upgrades
    - Upgrades must preserve storage layout
    - New implementations must support UUPS
@@ -163,17 +170,20 @@ The struct is carefully designed for gas optimization:
 The contract implements emergency control mechanisms through OpenZeppelin's `PausableUpgradeable`:
 
 1. **Pause Functionality**
+
    - Immediate suspension of all contract operations
    - Only executable by accounts with `PAUSER_ROLE`
    - Affects all state-changing functions
    - Events emitted for transparency
 
 2. **Access Control**
+
    - `PAUSER_ROLE` is separate from admin roles
    - Multiple pausers can be designated
    - Role can be granted/revoked by admin
 
 3. **Operations**
+
    - Dedicated scripts for pause/unpause operations
    - Clear documentation for emergency response
    - Can be integrated into automated monitoring
@@ -188,6 +198,7 @@ This provides a quick "emergency brake" that's separate from the upgrade mechani
 ### Core Workflows
 
 1. **Secret Registration**
+
    ```
    Off-chain                                              On-chain
    ---------                                              --------
@@ -225,27 +236,28 @@ This provides a quick "emergency brake" that's separate from the upgrade mechani
 The contract supports two methods of generating EIP-712 signatures:
 
 1. **Frontend Integration (Production)**
+
    ```javascript
    // Using ethers.js
    const domain = {
-       name: "SecretStore",
-       version: "1",
-       chainId: chainId,
-       verifyingContract: contractAddress
+     name: "SecretStore",
+     version: "1",
+     chainId: chainId,
+     verifyingContract: contractAddress,
    };
 
    const types = {
-       Agreement: [
-           { name: "secretHash", type: "bytes32" },
-           { name: "partyA", type: "address" },
-           { name: "partyB", type: "address" }
-       ]
+     Agreement: [
+       { name: "secretHash", type: "bytes32" },
+       { name: "partyA", type: "address" },
+       { name: "partyB", type: "address" },
+     ],
    };
 
    const value = {
-       secretHash: secretHash,
-       partyA: partyA,
-       partyB: partyB
+     secretHash: secretHash,
+     partyA: partyA,
+     partyB: partyB,
    };
 
    // Get signature using MetaMask or other wallet
@@ -255,28 +267,53 @@ The contract supports two methods of generating EIP-712 signatures:
 2. **Testing Implementation (Foundry)**
    ```solidity
    // Using Foundry's vm.sign for testing
-   bytes32 digest = _hashTypedDataV4(
-       keccak256(abi.encode(
-           AGREEMENT_TYPEHASH,
-           secretHash,
-           partyA,
-           partyB
-       ))
-   );
+   
+   // First get the domain separator which binds the signature to this chain and contract
+   bytes32 domainSeparator = keccak256(abi.encode(
+       DOMAIN_TYPE_HASH,
+       keccak256(bytes("SecretStore")),
+       keccak256(bytes("1")),
+       block.chainid,           // Binds to current chain
+       address(this)            // Binds to this contract instance
+   ));
+
+   // Create the struct hash
+   bytes32 structHash = keccak256(abi.encode(
+       AGREEMENT_TYPEHASH,
+       secretHash,
+       partyA,
+       partyB
+   ));
+
+   // Combine domain separator and struct hash per EIP-712
+   bytes32 digest = keccak256(abi.encodePacked(
+       "\x19\x01",
+       domainSeparator,        // Includes chainId and contract address
+       structHash
+   ));
+
+   // Sign the combined digest
    (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
    bytes memory signature = abi.encodePacked(r, s, v);
    ```
 
-Both methods produce valid EIP-712 signatures that can be verified on-chain. The Foundry implementation is used for testing and demonstration, while the JavaScript implementation represents how dApps would integrate with the protocol in production.
+Both methods produce valid EIP-712 signatures that can be verified on-chain. The signatures are bound to:
+- The specific chain (through chainId in domain separator)
+- The specific contract instance (through contract address in domain separator)
+- The specific agreement parameters (through struct hash)
+
+This prevents signature replay attacks across different chains, contracts, or agreement parameters. The Foundry implementation is used for testing and demonstration, while the JavaScript implementation represents how dApps would integrate with the protocol in production.
 
 ### Gas Optimization
 
 1. **Storage Packing**
+
    - Agreement struct packed into 2 slots:
      - Slot 1: partyA (160 bits) + partyB (160 bits)
      - Slot 2: timestamp (96 bits) + blockNumber (64 bits)
 
 2. **Memory Usage**
+
    - Use calldata for function parameters
    - Minimize storage reads/writes
    - Delete storage before events
@@ -289,12 +326,14 @@ Both methods produce valid EIP-712 signatures that can be verified on-chain. The
 ### Future Considerations
 
 1. **Potential Upgrades**
+
    - Multi-party secret sharing
    - Time-locked revelations
    - Encrypted partial reveals
    - Gas optimizations
 
 2. **Limitations**
+
    - Maximum secret size (gas limits)
    - Public blockchain visibility
    - Upgrade risks
