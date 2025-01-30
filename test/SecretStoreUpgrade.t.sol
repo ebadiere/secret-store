@@ -8,11 +8,21 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 /// @title SecretStoreUpgradeTest
-/// @notice Test suite for upgrade-specific functionality of SecretStore
-/// @dev Tests upgradeability concerns and security
+/// @notice Comprehensive testing of UUPS proxy upgrade mechanisms
+/// @dev Tests focus on critical upgrade security aspects:
+/// 1. Initialization Safety: Preventing re-initialization attacks
+/// 2. Access Control: Proper role-based upgrade permissions
+/// 3. State Preservation: Data integrity across upgrades
+/// 4. Implementation Validation: Preventing invalid upgrades
+///
+/// Security Considerations:
+/// - Uses OpenZeppelin's UUPS pattern
+/// - Follows ERC1967 proxy standards
+/// - Implements role-based access control
 contract SecretStoreUpgradeTest is Test {
     using MessageHashUtils for bytes32;
 
+    /// @dev Core contract instances and test accounts
     SecretStore public implementation;
     SecretStore public store;
     ERC1967Proxy public proxy;
@@ -22,10 +32,17 @@ contract SecretStoreUpgradeTest is Test {
     address partyA;
     address partyB;
 
-    // EIP-712 type hashes
+    /// @dev EIP-712 type hash for Agreement struct
+    /// Matches the structure in the main contract
     bytes32 private constant AGREEMENT_TYPE_HASH =
         keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
 
+    /// @notice Test environment setup
+    /// @dev Deployment process:
+    /// 1. Deploy implementation contract
+    /// 2. Deploy ERC1967 proxy
+    /// 3. Initialize with admin
+    /// 4. Configure upgrade permissions
     function setUp() public {
         admin = address(this);
         partyA = vm.addr(PARTY_A_KEY);
@@ -44,15 +61,23 @@ contract SecretStoreUpgradeTest is Test {
         store.grantRole(store.PAUSER_ROLE(), admin);
     }
 
-    /// @notice Test proper initialization
-    /// @dev Verifies that initialize can only be called once
+    /// @notice Initialization security test
+    /// @dev Verifies:
+    /// 1. Initialization can only occur once
+    /// 2. Prevents re-initialization attacks
+    /// 3. Maintains initialization state integrity
     function testCannotInitializeTwice() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         store.initialize(address(this));
     }
 
-    /// @notice Test upgrade authorization
-    /// @dev Verifies that only UPGRADER_ROLE can upgrade
+    /// @notice Upgrade access control test
+    /// @dev Verifies:
+    /// 1. Only UPGRADER_ROLE can perform upgrades
+    /// 2. Non-upgraders are properly rejected
+    /// 3. Access control errors are properly formatted
+    /// 
+    /// Security note: Tests both positive and negative cases
     function testOnlyUpgraderCanUpgrade() public {
         SecretStore newImplementation = new SecretStore();
         
@@ -73,15 +98,26 @@ contract SecretStoreUpgradeTest is Test {
         store.upgradeToAndCall(address(newImplementation), "");
     }
 
-    /// @notice Test upgrade with invalid implementation
-    /// @dev Verifies that zero address implementations are rejected
+    /// @notice Implementation address validation
+    /// @dev Verifies:
+    /// 1. Zero address upgrades are rejected
+    /// 2. Prevents accidental proxy bricking
+    /// 3. Maintains upgrade safety checks
     function testCannotUpgradeToZeroAddress() public {
         vm.expectRevert("Invalid implementation address");
         store.upgradeToAndCall(address(0), "");
     }
 
-    /// @notice Test state preservation during upgrade
-    /// @dev Verifies that storage and roles are preserved after upgrade
+    /// @notice State preservation verification
+    /// @dev Comprehensive upgrade state test:
+    /// 1. Tests storage slots remain intact
+    /// 2. Verifies role assignments persist
+    /// 3. Validates agreement data integrity
+    /// 
+    /// Process:
+    /// 1. Register pre-upgrade agreement
+    /// 2. Perform upgrade
+    /// 3. Verify all state remains accessible
     function testUpgradePreservesState() public {
         // Register a secret before upgrade
         bytes32 secretHash = keccak256(abi.encodePacked("test secret"));
@@ -126,18 +162,35 @@ contract SecretStoreUpgradeTest is Test {
         assertTrue(store.hasRole(store.UPGRADER_ROLE(), admin));
     }
 
-    /// @notice Helper function to get parties from an agreement
-    /// @dev Extracts party addresses from the agreement mapping
+    /// @notice Agreement party retrieval utility
+    /// @dev Storage access helper:
+    /// 1. Reads from agreement mapping
+    /// 2. Extracts only party addresses
+    /// 3. Ignores other agreement data
+    /// 
+    /// Used for:
+    /// - State verification after upgrades
+    /// - Party address validation
+    /// @param secretHash Identifier for the agreement
+    /// @return tuple(address, address) PartyA and PartyB addresses
     function _getParties(bytes32 secretHash) internal view returns (address, address) {
         (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
         return (storedPartyA, storedPartyB);
     }
 
-    /// @notice Helper function to create EIP-712 signatures
-    /// @dev Creates signatures for both parties using their private keys
-    /// @param secretHash Hash of the secret and salt
-    /// @return signatureA PartyA's signature
-    /// @return signatureB PartyB's signature
+    /// @notice EIP-712 signature generation utility
+    /// @dev Signature creation process:
+    /// 1. Builds typed data struct hash
+    /// 2. Combines with domain separator
+    /// 3. Signs with both party keys
+    /// 
+    /// Security considerations:
+    /// - Uses EIP-712 for replay protection
+    /// - Maintains signature order (A then B)
+    /// - Uses deterministic keys for reproducibility
+    /// @param secretHash Agreement identifier to sign
+    /// @return signatureA EIP-712 signature from Party A
+    /// @return signatureB EIP-712 signature from Party B
     function _createSignaturesHelper(bytes32 secretHash) internal view returns (bytes memory signatureA, bytes memory signatureB) {
         bytes32 structHash = keccak256(
             abi.encode(

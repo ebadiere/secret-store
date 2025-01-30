@@ -8,22 +8,33 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 /// @title SecretStore Fuzz Tests
-/// @notice Comprehensive fuzz testing suite for the SecretStore contract
-/// @dev Uses Foundry's built-in fuzzing capabilities to test with random inputs
-/// @custom:security Tests focus on:
-///  1. EIP-712 signature verification
-///  2. Secret registration with random inputs
-///  3. Secret revelation with valid and invalid parameters
-///  4. Edge cases and error conditions
+/// @notice Property-based testing suite for SecretStore contract security
+/// @dev Utilizes Foundry's fuzzing engine to:
+/// 1. Generate random inputs within defined constraints
+/// 2. Test invariants that should hold regardless of input
+/// 3. Discover edge cases that unit tests might miss
+///
+/// Key Properties Tested:
+/// 1. Signature Verification: EIP-712 signatures remain valid for any valid input
+/// 2. Secret Integrity: Hash computation remains consistent for any secret/salt pair
+/// 3. Access Control: Only valid parties can interact regardless of input values
+/// 4. State Management: Agreement state remains consistent under all operations
 contract SecretStoreFuzzTest is Test {
+    /// @dev Fixed keys for deterministic address generation
+    /// Using constants instead of random keys for reproducibility
     SecretStore public store;
     uint256 constant PARTY_A_PRIVATE_KEY = 0xA11CE;
     uint256 constant PARTY_B_PRIVATE_KEY = 0xB0B;
     address partyA;
     address partyB;
 
+    /// @dev EIP-712 type hash for Agreement struct
+    /// Matches the structure in the main contract
     bytes32 constant AGREEMENT_TYPE_HASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
 
+    /// @notice Test environment setup
+    /// @dev Deploys contract with proxy pattern and initializes test accounts
+    /// Follows same deployment pattern as production for accurate testing
     function setUp() public {
         // Deploy implementation and proxy
         store = new SecretStore();
@@ -37,12 +48,19 @@ contract SecretStoreFuzzTest is Test {
         partyB = vm.addr(PARTY_B_PRIVATE_KEY);
     }
 
-    /// @notice Helper function to create the secret hash
+    /// @notice Creates deterministic hash from secret and salt
+    /// @dev Matches the hashing logic in the main contract
+    /// @param secret The secret string to hash
+    /// @param salt Random value to prevent rainbow table attacks
+    /// @return bytes32 Hash of secret and salt combined
     function _createSecretHash(string memory secret, bytes32 salt) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(secret, salt));
     }
 
-    /// @notice Helper function to create signatures for a secret hash
+    /// @notice Creates EIP-712 compliant signatures for both parties
+    /// @dev Uses stored private keys to generate deterministic signatures
+    /// @param secretHash The hash to sign
+    /// @return Tuple of signatures (partyA's signature, partyB's signature)
     function _createSignatures(bytes32 secretHash) internal view returns (bytes memory, bytes memory) {
         bytes32 structHash = keccak256(abi.encode(AGREEMENT_TYPE_HASH, secretHash, partyA, partyB));
         bytes32 digest = MessageHashUtils.toTypedDataHash(store.DOMAIN_SEPARATOR(), structHash);
@@ -57,6 +75,10 @@ contract SecretStoreFuzzTest is Test {
     }
 
     /// @notice Helper function to register a secret
+    /// @dev Calls the main contract's registerSecret function
+    /// @param secretHash The hash of the secret to register
+    /// @param sigA Party A's signature
+    /// @param sigB Party B's signature
     function _registerSecret(bytes32 secretHash, bytes memory sigA, bytes memory sigB) internal {
         store.registerSecret(secretHash, partyA, partyB, sigA, sigB);
     }

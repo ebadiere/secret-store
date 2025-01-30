@@ -7,21 +7,36 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 /// @title SecretStore Size Limits Test
-/// @notice Test suite for verifying SecretStore's behavior with secrets of various sizes
-/// @dev Tests include verification of recommended size limits and gas usage measurements
+/// @notice Comprehensive testing of contract behavior with varying secret sizes
+/// @dev Tests focus on three key aspects:
+/// 1. Functionality: Verifying correct operation with large secrets
+/// 2. Gas Usage: Measuring cost implications of different sizes
+/// 3. Limits: Testing boundaries of what the contract can handle
+///
+/// Key Test Parameters:
+/// - Recommended Max Size: 50KB
+/// - Test Range: 1KB to 100KB
+/// - Gas Usage Tracking: Per operation cost analysis
 contract SecretStoreSizeLimitsTest is Test {
     using Strings for uint256;
 
+    /// @dev Event to verify secret revelation with exact content
     event SecretRevealed(bytes32 indexed secretHash, address indexed revealer, string secret);
 
+    /// @dev Contract instances and test addresses
     SecretStore public implementation;
     SecretStore public secretStore;
     address public admin = address(1);
-    address public partyA = vm.addr(1);  // Use vm.addr to get address from private key
-    address public partyB = vm.addr(2);  // Use vm.addr to get address from private key
+    address public partyA = vm.addr(1);  // Deterministic address from private key 1
+    address public partyB = vm.addr(2);  // Deterministic address from private key 2
 
-    /// @notice Set up the test environment with a fresh SecretStore instance
-    /// @dev Deploys implementation and proxy, sets up roles
+    /// @notice Test environment initialization
+    /// @dev Setup process:
+    /// 1. Deploy implementation contract
+    /// 2. Deploy and initialize proxy
+    /// 3. Configure access control roles
+    /// 
+    /// Security note: Uses deterministic addresses for reproducibility
     function setUp() public {
         // Deploy implementation and proxy
         implementation = new SecretStore();
@@ -41,8 +56,17 @@ contract SecretStoreSizeLimitsTest is Test {
         vm.stopPrank();
     }
 
-    /// @notice Test the contract's ability to handle a large secret (50KB)
-    /// @dev Verifies registration and revelation of a 50KB secret, which is our recommended maximum size
+    /// @notice Validates contract operation with maximum recommended secret size
+    /// @dev Test flow:
+    /// 1. Generate 50KB secret (recommended limit)
+    /// 2. Create and verify EIP-712 signatures
+    /// 3. Register secret and verify storage
+    /// 4. Reveal secret and verify event emission
+    ///
+    /// Security considerations:
+    /// - Tests gas limits for large operations
+    /// - Validates event data integrity
+    /// - Ensures complete secret recovery
     function test_LargeSecret() public {
         // Generate a 50KB secret (recommended maximum size)
         string memory largeSecret = _generateLargeString(50 * 1024);
@@ -89,8 +113,17 @@ contract SecretStoreSizeLimitsTest is Test {
         );
     }
 
-    /// @notice Test gas usage with secrets of different sizes
-    /// @dev Tests secrets from 1KB to 100KB and logs gas usage for each size
+    /// @notice Gas usage analysis across secret sizes
+    /// @dev Test methodology:
+    /// 1. Tests 4 size points: 1KB, 10KB, 50KB, 100KB
+    /// 2. Measures gas for registration and revelation
+    /// 3. Logs results for analysis
+    ///
+    /// Size selection rationale:
+    /// - 1KB: Baseline for small secrets
+    /// - 10KB: Common use case size
+    /// - 50KB: Recommended maximum
+    /// - 100KB: Stress test beyond recommendations
     function test_LargeSecretGasUsage() public {
         // Test with different secret sizes to demonstrate gas usage
         uint256[] memory sizes = new uint256[](4);
@@ -146,10 +179,18 @@ contract SecretStoreSizeLimitsTest is Test {
         }
     }
 
-    /// @notice Generate a string of specified size using a repeating pattern
-    /// @dev Creates a string by repeating "SecretStore" until reaching desired size
-    /// @param size The desired size in bytes
-    /// @return A string of the specified size
+    /// @notice String generation utility for size testing
+    /// @dev Implementation details:
+    /// 1. Uses "SecretStore" as base pattern (11 bytes)
+    /// 2. Efficiently repeats pattern to reach target size
+    /// 3. Handles partial pattern at end of string
+    ///
+    /// Memory considerations:
+    /// - Allocates exact size needed
+    /// - Uses minimal temporary storage
+    /// - Efficient for large strings
+    /// @param size Target size in bytes
+    /// @return Deterministic string of exact requested size
     function _generateLargeString(uint256 size) internal pure returns (string memory) {
         // Create a repeating pattern to reach desired size
         bytes memory pattern = bytes("SecretStore"); // 11 bytes
@@ -168,31 +209,33 @@ contract SecretStoreSizeLimitsTest is Test {
         return string(result);
     }
 
-    /// @notice Compute the EIP-712 domain separator
-    /// @dev Copied from SecretStore contract for testing
-    /// @return The domain separator hash
+    /// @notice Computes EIP-712 domain separator
+    /// @dev Components:
+    /// 1. Contract name: "SecretStore"
+    /// 2. Version: "1"
+    /// 3. Chain ID: Current chain
+    /// 4. Contract address: Deployed proxy
+    /// @return bytes32 Unique domain separator for this contract instance
     function _computeDomainSeparator() internal view returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    keccak256(
-                        abi.encodePacked(
-                            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                        )
-                    ),
-                    keccak256(abi.encodePacked("SecretStore")),
-                    keccak256(abi.encodePacked("1")),
-                    block.chainid,
-                    address(secretStore)
-                )
-            );
+        return keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("SecretStore")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(secretStore)
+            )
+        );
     }
 
-    /// @notice Compute the EIP-712 hash
-    /// @dev Copied from SecretStore contract for testing
-    /// @param domainSeparator The domain separator hash
-    /// @param structHash The hash of the struct being signed
-    /// @return The final EIP-712 hash
+    /// @notice EIP-712 typed data hashing
+    /// @dev Process:
+    /// 1. Combines domain separator with struct hash
+    /// 2. Follows EIP-712 prefix and encoding rules
+    /// 3. Produces final digest for signing
+    /// @param domainSeparator Contract's domain separator
+    /// @param structHash Hash of the struct being signed
+    /// @return bytes32 Final hash for signing
     function _hashTypedDataV4(bytes32 domainSeparator, bytes32 structHash)
         internal
         pure
