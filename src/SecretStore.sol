@@ -40,6 +40,7 @@ contract SecretStore is
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
+    /// @dev Role IDs for authorization
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
@@ -128,6 +129,8 @@ contract SecretStore is
     /// @dev Gas optimization: Using a single mapping instead of separate mappings
     /// reduces storage operations and simplifies agreement management.
     /// A non-existent agreement is indicated by partyA being address(0).
+    /// The secretHash key is always a 32-byte value (keccak256 output),
+    /// regardless of the original secret's size, ensuring consistent storage layout.
     mapping(bytes32 => Agreement) public agreements;
 
     // Events

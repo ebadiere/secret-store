@@ -14,34 +14,52 @@ interface IUpgradeableProxy {
 }
 
 /// @title SecretStore Test Suite
-/// @notice Comprehensive test suite for the SecretStore contract
-/// @dev Tests cover core functionality, security measures, and edge cases
-/// @custom:security Tests specifically verify:
-///  1. Access control for registration and revelation
-///  2. Signature verification and replay protection
-///  3. State management and existence checks
-///  4. Salt handling and secret hashing
+/// @notice Comprehensive test coverage for SecretStore functionality and security
+/// @dev Tests verify:
+/// 1. EIP-712 signature validation and replay protection
+/// 2. Two-party registration with single-party revelation flow
+/// 3. Storage efficiency and state management
+/// 4. Access control and upgrade safety
+///
+/// Key security aspects tested:
+/// 1. Role-based access control enforcement
+/// 2. Domain separation for signatures
+/// 3. Agreement lifecycle management
+/// 4. Upgrade path protection
 contract SecretStoreTest is Test {
     using MessageHashUtils for bytes32;
 
-    /// @notice Test constants for consistent secret and signature testing
+    /// @notice Core test values for secret management
+    /// @dev Constants ensure consistent and reproducible test scenarios:
+    /// - Secret and salt combine to create a unique hash
+    /// - Hash function matches production implementation
+    /// - 32-byte hash provides fixed storage footprint
     string constant TEST_SECRET = "my secret message";
-    bytes32 constant TEST_SALT = bytes32(uint256(123)); // Random salt for testing
+    bytes32 constant TEST_SALT = bytes32(uint256(123));
     bytes32 constant TEST_SECRET_HASH = keccak256(abi.encodePacked(TEST_SECRET, TEST_SALT));
     
-    /// @notice Contract instance and test addresses
+    /// @notice Test participant configuration
+    /// @dev Uses deterministic keys for reproducible tests:
+    /// - Addresses derived from known private keys
+    /// - Keys used only for testing, never in production
     SecretStore public store;
     address public partyA;
     address public partyB;
     uint256 public PARTY_A_PRIVATE_KEY = 0x1234;
     uint256 public PARTY_B_PRIVATE_KEY = 0x5678;
 
-    // Events for testing
+    // Events for validating pause functionality
     event SecretStorePaused(address indexed account);
     event SecretStoreUnpaused(address indexed account);
 
-    /// @notice Setup function run before each test
-    /// @dev Creates a fresh contract instance and sets up test accounts
+    /// @notice Test environment initialization
+    /// @dev Follows production deployment pattern:
+    /// 1. Implementation contract deployment
+    /// 2. Proxy deployment with implementation address
+    /// 3. Initialization through proxy
+    /// Note: While we use UUPS pattern (EIP-1822) for upgrade logic placement,
+    /// we use ERC1967Proxy as it implements both UUPS compatibility and
+    /// standardized storage slots (ERC1967) for proxy state
     function setUp() public {
         store = new SecretStore();
         ERC1967Proxy proxy = new ERC1967Proxy(
@@ -55,12 +73,20 @@ contract SecretStoreTest is Test {
         partyB = vm.addr(PARTY_B_PRIVATE_KEY);
     }
 
-    /// @notice Test initialization of the contract
-    /// @dev Verifies that the contract is initialized correctly with proper roles
+    /// @notice Test initialization of roles
+    /// @dev Verifies that the deployer address (test contract) is granted:
+    /// - DEFAULT_ADMIN_ROLE for overall access control
+    /// - PAUSER_ROLE for emergency stops
+    /// - UPGRADER_ROLE for contract upgrades
     function testInitialization() public {
-        assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(this)));
-        assertTrue(store.hasRole(store.PAUSER_ROLE(), address(this)));
-        assertTrue(store.hasRole(store.UPGRADER_ROLE(), address(this)));
+        // Verify all required roles are granted to deployer
+        bytes32 adminRole = store.DEFAULT_ADMIN_ROLE();
+        bytes32 pauserRole = store.PAUSER_ROLE();
+        bytes32 upgraderRole = store.UPGRADER_ROLE();
+        
+        assertTrue(store.hasRole(adminRole, address(this)), "Admin role not granted");
+        assertTrue(store.hasRole(pauserRole, address(this)), "Pauser role not granted");
+        assertTrue(store.hasRole(upgraderRole, address(this)), "Upgrader role not granted");
     }
 
     /// @notice Test zero address admin initialization
@@ -71,17 +97,6 @@ contract SecretStoreTest is Test {
             address(implementation),
             abi.encodeCall(SecretStore.initialize, (address(0)))
         );
-    }
-
-    /// @notice Test proper initialization
-    function testProperInitialization() public {
-        SecretStore implementation = new SecretStore();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation),
-            abi.encodeCall(SecretStore.initialize, (address(this)))
-        );
-        SecretStore newStore = SecretStore(address(proxy));
-        assertTrue(newStore.hasRole(newStore.DEFAULT_ADMIN_ROLE(), address(this)));
     }
 
     /// @notice Test basic secret registration functionality
