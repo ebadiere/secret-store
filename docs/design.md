@@ -9,27 +9,15 @@ The **SecretStore** protocol is designed to meet the following core requirements
 3. **Secret Storage**: Secrets must be stored in a way that prevents value observation on-chain
 4. **Revelation Rights**: Either party can reveal the secret at any time
 5. **Deletion**: Upon revelation, the stored secret should be deleted
-6. **Block Timing**: Agreement must be provable at a specific block number
+6. **Block Timing**: Agreement must be provable with revelation possible at a later block
 7. **Event Emission**: The contract must emit an event upon secret revelation, including the revealer's address and the secret value. Additionally, as a best practice for state changes, the contract also emits events for secret registration.
 8. **Signature Validation**: Must validate off-chain signatures on-chain
 
-2. **Agreement Proof**  
-   Proves that both parties agreed to the secret at a specific block.
+## Enhanced Features
 
-3. **Delayed Reveal**  
-   Either party may reveal the secret at a later block.
-
-4. **Cleanup on Reveal**  
-   Once a secret is revealed, the contract deletes the agreement.
-
-5. **Atomic Registration**  
-   Registration must happen in a **single transaction** to ensure both parties commit in the same block.
-
-6. **Secret Privacy**  
-   The secret must not be discoverable by simply observing the chain prior to reveal.
-
-7. **Event Emission**  
-   The contract emits events for both registration and revelation, ensuring transparency.
+1. **Access Control**: Role-based access control for administrative functions
+2. **Upgradability**: UUPS proxy pattern for future upgrades
+3. **Emergency Controls**: Pause mechanism for emergency situations
 
 ---
 
