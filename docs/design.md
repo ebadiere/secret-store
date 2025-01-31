@@ -13,12 +13,6 @@ The **SecretStore** protocol is designed to meet the following core requirements
 7. **Event Emission**: The contract must emit an event upon secret revelation, including the revealer's address and the secret value. Additionally, as a best practice for state changes, the contract also emits events for secret registration.
 8. **Signature Validation**: Must validate off-chain signatures on-chain
 
-## Enhanced Features
-
-1. **Access Control**: Role-based access control for administrative functions
-2. **Upgradability**: UUPS proxy pattern for future upgrades
-3. **Emergency Controls**: Pause mechanism for emergency situations
-
 ---
 
 ## 2. Atomic Registration Requirement
@@ -420,6 +414,5 @@ However, this enhancement should only be implemented with:
 
 ### Additional Features
 
-1. **Automated Secret Deletion**
-2. **Timelock for Upgrades**
+1. **Timelock for Upgrades**
    - Implement a timelock that enforces a delay between scheduling and executing an upgrade. This approach gives stakeholders time to review proposed changes and cancel any potentially harmful upgrades before they take effect.
