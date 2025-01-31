@@ -236,13 +236,15 @@ Used to grant or revoke roles on the contract. For production, this should be ex
 # Local testing
 export PROXY_ADDRESS="0x..."      # Address of the deployed proxy
 export TARGET_ACCOUNT="0x..."     # Account to grant/revoke role for
-export ROLE="PAUSER"             # Role to manage (PAUSER, UPGRADER, or DEFAULT_ADMIN)
-export ACTION="GRANT"            # Action to take (GRANT or REVOKE)
-export PRIVATE_KEY="0x..."       # Private key of the sender (must have DEFAULT_ADMIN_ROLE)
+export ROLE="PAUSER"             # Role to manage (must be: PAUSER, UPGRADER, or DEFAULT_ADMIN)
+export ACTION="GRANT"            # Action to take (must be: GRANT or REVOKE)
+export PRIVATE_KEY="0x..."       # Private key of an account that has DEFAULT_ADMIN_ROLE
+
+# Execute the transaction (requires --broadcast)
 forge script script/ManageRoles.s.sol --rpc-url http://localhost:8545 --broadcast
 
 # Production
-# 1. Generate transaction data
+# 1. Generate transaction data (no --broadcast)
 forge script script/ManageRoles.s.sol --rpc-url $RPC_URL
 # 2. Submit transaction through multisig UI
 ```

@@ -28,18 +28,13 @@ import "../src/SecretStore.sol";
 contract VerifyRoles is Script {
     /// @notice Entry point for the verification script
     /// @dev Reads proxy address from environment and calls verify()
-    function run() external {
+    function run() external view {
         address proxyAddress = vm.envAddress("PROXY_ADDRESS");
         verify(proxyAddress);
     }
 
     /// @notice Main verification function that checks role configuration
     /// @param proxyAddress Address of the deployed SecretStore proxy contract
-    /// @dev Performs comprehensive role verification:
-    ///      1. Checks multisig has required roles
-    ///      2. Verifies deployer has renounced roles
-    ///      3. Ensures zero address has no roles
-    ///      Reverts with descriptive message if any check fails
     function verify(address proxyAddress) public view {
         SecretStore store = SecretStore(proxyAddress);
         address multiSig = vm.envAddress("MULTISIG_ADDRESS");

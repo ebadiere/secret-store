@@ -36,9 +36,9 @@ contract SecretStore is
     /// - blockNumber as uint64 supports very high block numbers
     /// - partyA being address(0) indicates no agreement exists (used for existence checks)
     struct Agreement {
-        address partyA;      // 20 bytes
-        address partyB;      // 20 bytes
-        uint96 timestamp;    // 12 bytes
+        address partyA; // 20 bytes
+        address partyB; // 20 bytes
+        uint96 timestamp; // 12 bytes
         uint64 blockNumber; // 8 bytes
     }
 
@@ -46,7 +46,7 @@ contract SecretStore is
     /// The bytes32 type is used because:
     /// 1. It matches keccak256's output size (32 bytes)
     /// 2. It's gas efficient as a fixed-size type
-    /// 3. It ensures compatibility with AccessControl's role system    
+    /// 3. It ensures compatibility with AccessControl's role system
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
@@ -58,30 +58,21 @@ contract SecretStore is
     ///   partyA: address,
     ///   partyB: address
     /// )
-    bytes32 public constant AGREEMENT_TYPE_HASH = keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
-
-    // EIP-712 type hashes
-    bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-
-    /// @dev Pre-computed hashes for domain separator:
-    /// _NAME_HASH = keccak256(bytes("SecretStore"))
-    /// _VERSION_HASH = keccak256(bytes("1"))
-    /// These are computed at compile time to save gas when computing
-    /// the domain separator for EIP-712 signatures
-    bytes32 private constant _NAME_HASH = keccak256(bytes("SecretStore"));
-    bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
+    bytes32 public constant AGREEMENT_TYPE_HASH =
+        keccak256(
+            "Agreement(bytes32 secretHash,address partyA,address partyB)"
+        );
 
     /// @dev Domain separator caching for gas optimization
     /// The domain separator is cached during initialization and never updated.
-    /// 
+    ///
     /// Important: This is a gas optimization that comes with a trade-off:
     /// In case of a chain fork, the cached chainId will remain that of the
     /// original chain, making all signatures invalid on the forked chain.
     /// Since the values are set in the proxy's storage during initialization
     /// and cannot be reinitialized, this would require deploying an entirely
     /// new proxy contract on the forked chain (losing all existing agreements).
-    /// 
+    ///
     /// This design decision prioritizes gas efficiency for the common case,
     /// accepting the limitation during the rare event of a chain fork.
     bytes32 private _CACHED_DOMAIN_SEPARATOR;
@@ -147,7 +138,7 @@ contract SecretStore is
     /// @param deployer Address to be granted all initial roles (DEFAULT_ADMIN_ROLE, PAUSER_ROLE, UPGRADER_ROLE)
     function initialize(address deployer) external initializer {
         require(deployer != address(0), "Deployer cannot be zero address");
-        
+
         __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
@@ -189,12 +180,7 @@ contract SecretStore is
 
         // Cache the struct hash to avoid recomputation
         bytes32 structHash = keccak256(
-            abi.encode(
-                AGREEMENT_TYPE_HASH,
-                secretHash,
-                partyA,
-                partyB
-            )
+            abi.encode(AGREEMENT_TYPE_HASH, secretHash, partyA, partyB)
         );
 
         // Cache the EIP-712 hash to avoid recomputation
@@ -207,13 +193,13 @@ contract SecretStore is
             hash,
             signatureA
         );
+        require(validA, "Invalid signature from partyA");
+
         bool validB = SignatureChecker.isValidSignatureNow(
             partyB,
             hash,
             signatureB
         );
-
-        require(validA, "Invalid signature from partyA");
         require(validB, "Invalid signature from partyB");
 
         // Write directly to storage once
@@ -247,7 +233,7 @@ contract SecretStore is
     ) external whenNotPaused nonReentrant {
         // Load agreement data for validation
         Agreement memory agreement = agreements[secretHash];
-        
+
         require(agreement.partyA != address(0), "Agreement does not exist");
         require(
             msg.sender == agreement.partyA || msg.sender == agreement.partyB,
@@ -261,16 +247,9 @@ contract SecretStore is
         // Delete storage before events to avoid unnecessary reads
         delete agreements[secretHash];
 
-        emit SecretRevealed(
-            secretHash,
-            msg.sender,
-            secret
-        );
+        emit SecretRevealed(secretHash, msg.sender, secret);
 
-        emit AgreementDeleted(
-            secretHash,
-            msg.sender
-        );
+        emit AgreementDeleted(secretHash, msg.sender);
     }
 
     /// @notice Gets the domain separator for EIP-712 signatures
@@ -288,12 +267,13 @@ contract SecretStore is
     /// 1. The proxy uses as a storage slot for the implementation address
     /// 2. Acts as a "marker" to verify upgrade compatibility
     /// 3. Standardizes where all UUPS proxies store their implementation
-    /// 
+    ///
     /// Note: This implementation contract never uses this slot - only
     /// the proxy uses it to store our address.
     /// @return bytes32 The magic value keccak256("PROXIABLE")
     function proxiableUUID() external pure override returns (bytes32) {
-        return 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+        return
+            0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
     }
 
     /// @notice Pauses all contract operations
@@ -316,36 +296,39 @@ contract SecretStore is
     /// @dev Required by the UUPSUpgradeable contract (EIP-1822) to authorize upgrades.
     /// This function is called internally during upgrade operations to verify
     /// that the caller has the necessary permissions to perform the upgrade.
-    /// 
+    ///
     /// Security notes:
     /// 1. Only UPGRADER_ROLE can perform upgrades
     /// 2. The function MUST be present in new implementations
     /// 3. If removed, the contract becomes non-upgradeable
-    /// 
+    ///
     /// Note: While this implementation only performs a read-only check, the function
     /// cannot be marked as `view` because it is part of the upgrade process which
     /// modifies state in the proxy contract. The compiler warning about this can
     /// be safely ignored.
-    /// 
+    ///
     /// @param newImplementation Address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        onlyRole(UPGRADER_ROLE)
-    {
-        require(newImplementation != address(0), "Invalid implementation address");
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyRole(UPGRADER_ROLE) {
+        require(
+            newImplementation != address(0),
+            "Invalid implementation address"
+        );
     }
 
     /// @dev Returns the hash of typed data for EIP-712 signatures
-    /// @dev Gas optimization: Uses memory parameter to avoid stack operations
+    /// @dev This implementation follows the EIP-712 specification:
+    /// - \x19 is a version byte to make the encoding unique and prevent signed data from being executable
+    /// - \x01 is the version byte that indicates EIP-712 structured data
+    /// Together, \x19\x01 ensures this signature cannot be misinterpreted as another signing format
+    /// @dev Uses cached domain separator to reduce gas costs
     /// and minimize memory allocation in the hot path
     /// @param structHash The hash of the struct being signed
     /// @return bytes32 The final hash to be signed
-    function _hashTypedDataV4(bytes32 structHash)
-        internal
-        view
-        returns (bytes32)
-    {
+    function _hashTypedDataV4(
+        bytes32 structHash
+    ) internal view returns (bytes32) {
         bytes32 separator = _CACHED_DOMAIN_SEPARATOR;
         return keccak256(abi.encodePacked("\x19\x01", separator, structHash));
     }
@@ -359,7 +342,11 @@ contract SecretStore is
         return
             keccak256(
                 abi.encode(
-                    keccak256(abi.encodePacked("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")),
+                    keccak256(
+                        abi.encodePacked(
+                            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                        )
+                    ),
                     keccak256(abi.encodePacked("SecretStore")),
                     keccak256(abi.encodePacked("1")),
                     _CACHED_CHAIN_ID,

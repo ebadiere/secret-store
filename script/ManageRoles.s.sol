@@ -97,7 +97,7 @@ contract ManageRoles is Script {
         }
     }
 
-    function _parseRole(string memory roleStr, address proxyAddr) internal returns (bytes32) {
+    function _parseRole(string memory roleStr, address proxyAddr) internal view returns (bytes32) {
         SecretStore store = SecretStore(proxyAddr);
         
         if (keccak256(bytes(roleStr)) == keccak256(bytes("PAUSER"))) {
