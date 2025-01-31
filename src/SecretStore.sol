@@ -6,8 +6,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title SecretStore
@@ -16,7 +14,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 ///      - Domain separator includes contract name, version, chain ID, and address
 ///      - Signatures are bound to specific parties and cannot be reused
 ///      - Agreements are deleted after reveal to prevent reuse
-///      - Uses OpenZeppelin's ECDSA library for secure signature verification
+///      - Uses OpenZeppelin's SignatureChecker for secure signature verification
 /// @custom:security Important security notes:
 ///      1. Agreement existence is checked using partyA address. A zero address for
 ///         partyA indicates no agreement exists.
@@ -33,13 +31,7 @@ contract SecretStore is
     PausableUpgradeable,
     ReentrancyGuardUpgradeable
 {
-    /// @dev OpenZeppelin utilities for cryptographic operations:
-    /// - ECDSA adds signature verification (e.g., hash.recover(signature))
-    /// - MessageHashUtils adds EIP-712 formatting (e.g., hash.toTypedDataHash(domainSeparator))
-    /// These make the code more readable by allowing method-style calls on bytes32 values
-    using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
-
+ 
     /// @dev Role IDs for authorization
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
@@ -67,10 +59,17 @@ contract SecretStore is
     bytes32 private constant _VERSION_HASH = keccak256(bytes("1"));
 
     /// @dev Domain separator caching for gas optimization
-    /// The domain separator is cached after initialization and only
-    /// recomputed if the chain ID changes (e.g., during a fork).
-    /// This saves gas by avoiding repeated keccak256 computations
-    /// for each signature verification.
+    /// The domain separator is cached during initialization and never updated.
+    /// 
+    /// Important: This is a gas optimization that comes with a trade-off:
+    /// In case of a chain fork, the cached chainId will remain that of the
+    /// original chain, making all signatures invalid on the forked chain.
+    /// Since the values are set in the proxy's storage during initialization
+    /// and cannot be reinitialized, this would require deploying an entirely
+    /// new proxy contract on the forked chain (losing all existing agreements).
+    /// 
+    /// This design decision prioritizes gas efficiency for the common case,
+    /// accepting the limitation during the rare event of a chain fork.
     bytes32 private _CACHED_DOMAIN_SEPARATOR;
     uint256 private _CACHED_CHAIN_ID;
 

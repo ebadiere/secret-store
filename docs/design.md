@@ -69,6 +69,18 @@ SecretStore addresses broader protocol needs:
 
 ## 4. Why EIP-712 Over Plain `ecrecover`?
 
+### Gas Optimization Trade-offs
+
+The contract implements several gas optimizations, with one notable trade-off:
+
+1. **Chain ID Caching**
+   - **Optimization**: The chain ID and domain separator are cached during initialization to save gas on signature verification
+   - **Trade-off**: In case of a chain fork, the cached chain ID remains that of the original chain
+   - **Impact**: All signatures become invalid on the forked chain
+   - **Technical Limitation**: Since these values are set in the proxy's storage during initialization and cannot be reinitialized, this would require deploying an entirely new proxy contract on the forked chain (losing all existing agreements)
+   - **Decision**: We prioritized gas efficiency for the common case, accepting this limitation given the rarity of chain forks in modern networks
+   - **Mitigation**: In the unlikely event of a fork, users would need to migrate to a new contract instance
+
 ### Vulnerabilities of Plain `ecrecover`
 
 - **No Domain Separation**: A single signature can be reused across different chains or contracts.  
