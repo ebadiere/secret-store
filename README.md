@@ -23,6 +23,7 @@ A secure smart contract implementation that enables two parties to store and rev
 
 ## Quick Start
 
+### Local Development
 ```bash
 # Install Foundry (if not already installed)
 curl -L https://foundry.paradigm.xyz | bash
@@ -35,6 +36,12 @@ forge install
 # Run tests
 forge test
 ```
+
+### Sanity Check
+```bash
+forge clean && forge build --force && forge test -vvv
+```
+> Note: You will see a warning about the `_authorizeUpgrade` function's state mutability (Warning 2018). This is expected as the function is intentionally left non-view to match OpenZeppelin's UUPS interface. See the NatSpec documentation in the contract for details.
 
 ## Project Structure
 
