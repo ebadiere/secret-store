@@ -39,6 +39,11 @@ contract SecretStoreTest is Test {
     bytes32 constant TEST_SALT = bytes32(uint256(123));
     bytes32 constant TEST_SECRET_HASH = keccak256(abi.encodePacked(TEST_SECRET, TEST_SALT));
     
+    bytes32 constant DOMAIN_TYPE_HASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 constant AGREEMENT_TYPE_HASH =
+        keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
+
     /// @notice Test participant configuration
     /// @dev Uses deterministic keys for reproducible tests:
     /// - Addresses derived from known private keys
@@ -52,6 +57,12 @@ contract SecretStoreTest is Test {
     // Events for validating pause functionality
     event SecretStorePaused(address indexed account);
     event SecretStoreUnpaused(address indexed account);
+    event Debug_Signature(
+        bytes32 structHash,
+        bytes32 digest,
+        address recovered,
+        address expected
+    );
 
     /// @notice Test environment initialization
     /// @dev Follows production deployment pattern:
@@ -597,18 +608,6 @@ contract SecretStoreTest is Test {
             role
         );
     }
-
-    bytes32 constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 constant AGREEMENT_TYPE_HASH =
-        keccak256("Agreement(bytes32 secretHash,address partyA,address partyB)");
-
-    event Debug_Signature(
-        bytes32 structHash,
-        bytes32 digest,
-        address recovered,
-        address expected
-    );
 
     /// @notice Helper function to create signatures for testing
     /// @dev Creates EIP-712 signatures for partyA and partyB
