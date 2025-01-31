@@ -31,7 +31,17 @@ contract SecretStore is
     PausableUpgradeable,
     ReentrancyGuardUpgradeable
 {
- 
+    /// @dev This packing reduces storage operations from 4 slots to 2 slots (~43% gas savings)
+    /// - timestamp as uint96 supports dates until year 2^96 (far future)
+    /// - blockNumber as uint64 supports very high block numbers
+    /// - partyA being address(0) indicates no agreement exists (used for existence checks)
+    struct Agreement {
+        address partyA;      // 20 bytes
+        address partyB;      // 20 bytes
+        uint96 timestamp;    // 12 bytes
+        uint64 blockNumber; // 8 bytes
+    }
+
     /// @dev Role IDs for authorization
     /// The bytes32 type is used because:
     /// 1. It matches keccak256's output size (32 bytes)
@@ -77,6 +87,50 @@ contract SecretStore is
     bytes32 private _CACHED_DOMAIN_SEPARATOR;
     uint256 private _CACHED_CHAIN_ID;
 
+    /// @notice Mapping of secret hashes to their agreements
+    /// @dev Gas optimization: Using a single mapping instead of separate mappings
+    /// reduces storage operations and simplifies agreement management.
+    /// A non-existent agreement is indicated by partyA being address(0).
+    /// The secretHash key is always a 32-byte value (keccak256 output),
+    /// regardless of the original secret's size, ensuring consistent storage layout.
+    mapping(bytes32 => Agreement) public agreements;
+
+    // Events
+    /// @dev Gas optimization: We only index parameters that will be used for filtering
+    /// - secretHash is indexed as it's the primary key for lookups
+    /// - partyA/partyB are indexed as they're used to filter agreements by participant
+    /// - timestamp and blockNumber are not indexed as they're rarely used for filtering
+    /// and indexing them would increase gas costs unnecessarily
+    event SecretRegistered(
+        bytes32 indexed secretHash,
+        address indexed partyA,
+        address indexed partyB,
+        uint256 timestamp,
+        uint256 blockNumber
+    );
+
+    /// @dev Gas optimization: We index secretHash for correlation with registration
+    /// and revealer for filtering reveals by address. The secret itself is not indexed
+    /// as it would be expensive and is never used for filtering.
+    event SecretRevealed(
+        bytes32 indexed secretHash,
+        address indexed revealer,
+        string secret
+    );
+
+    /// @dev Gas optimization: We index the pauser address for filtering pause events
+    /// by address, which is useful for monitoring and alerting systems
+    event SecretStorePaused(address indexed pauser);
+    event SecretStoreUnpaused(address indexed pauser);
+
+    /// @dev Event emitted when agreement is deleted
+    /// @param secretHash Hash of the secret and salt, computed as keccak256(abi.encodePacked(secret, salt))
+    /// @param revealer Address that deleted the agreement
+    event AgreementDeleted(
+        bytes32 indexed secretHash,
+        address indexed revealer
+    );
+
     /// @dev Constructor required by the UUPSUpgradeable pattern.
     /// Must be empty because:
     /// 1. The implementation contract should never be initialized
@@ -112,68 +166,6 @@ contract SecretStore is
         _CACHED_CHAIN_ID = block.chainid;
         _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
     }
-
-    /// @notice Agreement struct to store information about a registered secret
-    /// @dev Optimized for gas efficiency through storage packing:
-    /// Slot 1: partyA (160 bits) + partyB (160 bits) = 320 bits
-    /// Slot 2: timestamp (96 bits) + blockNumber (64 bits) = 160 bits
-    /// This packing reduces storage operations from 4 slots to 2 slots (~43% gas savings)
-    /// - timestamp as uint96 supports dates until year 2^96 (far future)
-    /// - blockNumber as uint64 supports very high block numbers
-    /// - partyA being address(0) indicates no agreement exists (used for existence checks)
-    struct Agreement {
-        address partyA;      // 20 bytes
-        address partyB;      // 20 bytes
-        uint96 timestamp;    // 12 bytes
-        uint64 blockNumber; // 8 bytes
-    }
-
-    /// @notice Mapping of secret hashes to their agreements
-    /// @dev Gas optimization: Using a single mapping instead of separate mappings
-    /// reduces storage operations and simplifies agreement management.
-    /// A non-existent agreement is indicated by partyA being address(0).
-    /// The secretHash key is always a 32-byte value (keccak256 output),
-    /// regardless of the original secret's size, ensuring consistent storage layout.
-    mapping(bytes32 => Agreement) public agreements;
-
-    // Events
-    /// @dev Gas optimization: We only index parameters that will be used for filtering
-    /// - secretHash is indexed as it's the primary key for lookups
-    /// - partyA/partyB are indexed as they're used to filter agreements by participant
-    /// - timestamp and blockNumber are not indexed as they're rarely used for filtering
-    /// and indexing them would increase gas costs unnecessarily
-    event SecretRegistered(
-        bytes32 indexed secretHash,
-        address indexed partyA,
-        address indexed partyB,
-        uint256 timestamp,
-        uint256 blockNumber
-    );
-
-    /// @dev Gas optimization: We index secretHash for correlation with registration
-    /// and revealer for filtering reveals by address. The secret itself is not indexed
-    /// as it would be expensive and is never used for filtering.
-    event SecretRevealed(
-        bytes32 indexed secretHash,
-        address indexed revealer,
-        string secret
-    );
-
-    /// @dev Gas optimization: We only index secretHash to correlate with registration.
-    /// The revealer is not indexed since the deletion event is always paired with
-    /// a SecretRevealed event which already indexes the revealer.
-    event AgreementDeleted(
-        bytes32 indexed secretHash,
-        address revealer
-    );
-
-    /// @dev Event emitted when contract is paused
-    /// @param account The address that triggered the pause
-    event SecretStorePaused(address indexed account);
-
-    /// @dev Event emitted when contract is unpaused
-    /// @param account The address that triggered the unpause
-    event SecretStoreUnpaused(address indexed account);
 
     /// @notice Register a new secret agreement between two parties
     /// @dev Gas optimizations:
@@ -293,7 +285,6 @@ contract SecretStore is
     function DOMAIN_SEPARATOR() public view returns (bytes32) {
         return _CACHED_DOMAIN_SEPARATOR;
     }
-
 
     /// @notice Identifies this contract as UUPS-compatible for proxies
     /// @dev Required by EIP-1822 (UUPS) to prove upgrade compatibility.
