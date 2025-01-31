@@ -50,7 +50,9 @@ secret-store/
 ├── docs/
 │   └── design.md              # Design documentation and specifications
 ├── scripts/
-│   └── Deploy.s.sol           # Deployment script
+│   ├── Deploy.s.sol           # Deployment script
+│   ├── ManageRoles.s.sol      # Role management script
+│   └── VerifyRoles.s.sol      # Role verification script
 └── README.md                  # Project documentation
 ```
 
@@ -231,6 +233,53 @@ The `--hd-paths` option specifies which account to use on your Ledger:
 - `m/44'/60'/0'/0/0` - First Ethereum account
 - `m/44'/60'/0'/0/1` - Second Ethereum account
 - `m/44'/60'/0'/0/2` - Third Ethereum account
+
+## Role Management
+
+The project includes two scripts for managing and verifying roles:
+
+### VerifyRoles Script
+
+Used to verify the role configuration of a deployed contract. It checks:
+- Multisig wallet has all required roles (DEFAULT_ADMIN_ROLE, UPGRADER_ROLE, PAUSER_ROLE)
+- Deployer has no roles
+- Zero address has no roles
+
+```bash
+# Local testing
+export PROXY_ADDRESS="0x..." # Address of the deployed proxy
+export MULTISIG_ADDRESS="0x..." # Address to verify roles for
+forge script script/VerifyRoles.s.sol --rpc-url http://localhost:8545
+
+# Production
+export PROXY_ADDRESS="0x..." # Address of the deployed proxy
+export MULTISIG_ADDRESS="0x..." # Address of the multisig wallet
+forge script script/VerifyRoles.s.sol --rpc-url $RPC_URL
+```
+
+### ManageRoles Script
+
+Used to grant or revoke roles on the contract. For production, this should be executed through the multisig wallet.
+
+```bash
+# Local testing
+export PROXY_ADDRESS="0x..."      # Address of the deployed proxy
+export TARGET_ACCOUNT="0x..."     # Account to grant/revoke role for
+export ROLE="PAUSER"             # Role to manage (PAUSER, UPGRADER, or DEFAULT_ADMIN)
+export ACTION="GRANT"            # Action to take (GRANT or REVOKE)
+export PRIVATE_KEY="0x..."       # Private key of the sender (must have DEFAULT_ADMIN_ROLE)
+forge script script/ManageRoles.s.sol --rpc-url http://localhost:8545 --broadcast
+
+# Production
+# 1. Generate transaction data
+forge script script/ManageRoles.s.sol --rpc-url $RPC_URL
+# 2. Submit transaction through multisig UI
+```
+
+Available roles:
+- `DEFAULT_ADMIN_ROLE`: Can grant and revoke all roles
+- `UPGRADER_ROLE`: Can upgrade the contract implementation
+- `PAUSER_ROLE`: Can pause and unpause the contract
 
 ## Administration
 

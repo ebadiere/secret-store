@@ -40,6 +40,16 @@ contract ManageRoles is Script {
         // Load configuration
         RoleConfig memory config = _getConfig();
         
+        console.log("\nRole Management Configuration:");
+        console.log("------------------------");
+        console.log("Network:", block.chainid == 31337 ? "Anvil" : "Production");
+        console.log("Proxy:", config.proxyAddress);
+        console.log("Target Account:", config.account);
+        console.log("Role:", vm.toString(config.role));
+        console.log("Action:", config.action == Action.Grant ? "GRANT" : "REVOKE");
+        console.log("Sender (multi-sig):", config.sender);
+        console.log("------------------------\n");
+
         // Get contract instance
         SecretStore secretStore = SecretStore(config.proxyAddress);
 
@@ -58,62 +68,56 @@ contract ManageRoles is Script {
     }
 
     function _getConfig() internal returns (RoleConfig memory config) {
+        // Always get proxy address from environment
+        config.proxyAddress = vm.envAddress("PROXY_ADDRESS");
+        
         if (block.chainid == 31337) {
             // ====== Local Testing Configuration ======
             // Get configuration from environment variables or use defaults
-            config.proxyAddress = vm.envOr("CONTRACT_ADDRESS", address(0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512));
-            config.account = vm.envOr("ACCOUNT", address(0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC));
+            config.account = vm.envOr("TARGET_ACCOUNT", address(0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC));
+            
+            // Use Account #1 (multisig) as sender by default
             config.senderKey = vm.envOr("PRIVATE_KEY", uint256(0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d));
             config.sender = vm.addr(config.senderKey);
             
-            // Default to granting PAUSER_ROLE for testing
-            config.role = SecretStore(config.proxyAddress).PAUSER_ROLE();
-            config.action = Action.Grant;
+            // Get role from environment or default to PAUSER_ROLE
+            string memory roleStr = vm.envOr("ROLE", string("PAUSER"));
+            config.role = _parseRole(roleStr, config.proxyAddress);
+            
+            // Get action from environment or default to Grant
+            string memory actionStr = vm.envOr("ACTION", string("GRANT"));
+            config.action = _parseAction(actionStr);
         } else {
             // ====== Production Configuration ======
-            config.proxyAddress = vm.envAddress("PROXY_ADDRESS");
             config.account = vm.envAddress("TARGET_ACCOUNT");
             config.senderKey = vm.envUint("PRIVATE_KEY");
             config.sender = vm.addr(config.senderKey);
-            
-            // Parse role from environment
-            string memory roleStr = vm.envString("ROLE");
-            if (keccak256(bytes(roleStr)) == keccak256(bytes("PAUSER"))) {
-                config.role = SecretStore(config.proxyAddress).PAUSER_ROLE();
-            } else if (keccak256(bytes(roleStr)) == keccak256(bytes("UPGRADER"))) {
-                config.role = SecretStore(config.proxyAddress).UPGRADER_ROLE();
-            } else if (keccak256(bytes(roleStr)) == keccak256(bytes("DEFAULT_ADMIN"))) {
-                config.role = bytes32(0);
-            } else {
-                revert("Invalid role specified");
-            }
-
-            // Parse action from environment
-            string memory actionStr = vm.envString("ACTION");
-            if (keccak256(bytes(actionStr)) == keccak256(bytes("GRANT"))) {
-                config.action = Action.Grant;
-            } else if (keccak256(bytes(actionStr)) == keccak256(bytes("REVOKE"))) {
-                config.action = Action.Revoke;
-            } else {
-                revert("Invalid action specified");
-            }
+            config.role = _parseRole(vm.envString("ROLE"), config.proxyAddress);
+            config.action = _parseAction(vm.envString("ACTION"));
         }
+    }
 
-        // Validate configuration
-        require(config.proxyAddress != address(0), "Proxy address not configured");
-        require(config.account != address(0), "Target account not configured");
-        require(config.sender != address(0), "Sender address not configured");
-        require(config.senderKey != 0, "Sender private key not configured");
+    function _parseRole(string memory roleStr, address proxyAddr) internal returns (bytes32) {
+        SecretStore store = SecretStore(proxyAddr);
         
-        // Log configuration
-        console.log("\nRole Management Configuration:");
-        console.log("------------------------");
-        console.log("Network:", block.chainid == 31337 ? "Anvil" : "Production");
-        console.log("Proxy:", config.proxyAddress);
-        console.log("Target Account:", config.account);
-        console.log("Role:", vm.toString(config.role));
-        console.log("Action:", config.action == Action.Grant ? "GRANT" : "REVOKE");
-        console.log("Sender (multi-sig):", config.sender);
-        console.log("------------------------\n");
+        if (keccak256(bytes(roleStr)) == keccak256(bytes("PAUSER"))) {
+            return store.PAUSER_ROLE();
+        } else if (keccak256(bytes(roleStr)) == keccak256(bytes("UPGRADER"))) {
+            return store.UPGRADER_ROLE();
+        } else if (keccak256(bytes(roleStr)) == keccak256(bytes("DEFAULT_ADMIN"))) {
+            return bytes32(0);
+        } else {
+            revert("Invalid role specified");
+        }
+    }
+
+    function _parseAction(string memory actionStr) internal pure returns (Action) {
+        if (keccak256(bytes(actionStr)) == keccak256(bytes("GRANT"))) {
+            return Action.Grant;
+        } else if (keccak256(bytes(actionStr)) == keccak256(bytes("REVOKE"))) {
+            return Action.Revoke;
+        } else {
+            revert("Invalid action specified");
+        }
     }
 }
