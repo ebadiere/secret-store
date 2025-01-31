@@ -41,31 +41,31 @@ forge test
 ```
 secret-store/
 ├── src/
-│   └── SecretStore.sol        # Main contract implementation
+│   └── SecretStore.sol
 ├── test/
-│   ├── SecretStore.t.sol      # Core functionality tests
-│   ├── SecretStoreProxy.t.sol # Proxy and upgrade tests
-│   ├── SecretStorePause.t.sol # Pause functionality tests
-│   └── SecretStoreSizeLimits.t.sol # Secret size limits and gas usage tests
+│   ├── SecretStore.t.sol
+│   ├── SecretStoreFuzz.t.sol
+│   ├── SecretStoreInvariant.t.sol
+│   ├── SecretStoreSizeLimits.t.sol
+│   └── SecretStoreUpgrade.t.sol
 ├── docs/
-│   └── design.md              # Design documentation and specifications
+│   └── design.md
 ├── scripts/
-│   ├── Deploy.s.sol           # Deployment script
-│   ├── ManageRoles.s.sol      # Role management script
-│   └── VerifyRoles.s.sol      # Role verification script
-└── README.md                  # Project documentation
+│   ├── Deploy.s.sol
+│   ├── ManageRoles.s.sol
+│   └── VerifyRoles.s.sol
+└── README.md
 ```
-
-The project follows a standard Foundry structure:
 
 ## Testing
 
 The project includes comprehensive test suites:
 
 - `SecretStore.t.sol`: Core functionality tests including secret registration, revelation, and access control
-- `SecretStoreProxy.t.sol`: Tests for proxy deployment and upgrade functionality
-- `SecretStorePause.t.sol`: Tests for emergency pause functionality
+- `SecretStoreFuzz.t.sol`: Fuzz tests with randomized inputs
+- `SecretStoreInvariant.t.sol`: Invariant tests for critical security properties
 - `SecretStoreSizeLimits.t.sol`: Tests for secret size limitations and gas usage analysis
+- `SecretStoreUpgrade.t.sol`: Tests for upgrade safety and proxy functionality
 
 To run the tests:
 
@@ -115,45 +115,6 @@ function revealSecret(
 ) external
 ```
 
-## Demo
-There are two ways to run the demo:
-
-### Option 1: Interactive Demo (Recommended)
-This option runs the demo step by step with pauses and clear output:
-
-```bash
-# Start a local Ethereum node (in a separate terminal)
-anvil
-
-# Set environment variables for the demo
-export SECRET="my secret message"  # The secret to store
-export REVEAL_PARTY="A"           # Which party reveals the secret (A or B)
-
-# Run the interactive demo
-./demo_runner.sh
-```
-
-### Option 2: Quick Demo
-This option runs through all steps at once and shows the output at the end:
-
-```bash
-# Start a local Ethereum node (in a separate terminal)
-anvil
-
-# Set environment variables for the demo
-export SECRET="my secret message"  # The secret to store
-export REVEAL_PARTY="A"           # Which party reveals the secret (A or B)
-
-# Run the demo script (uses Anvil's default test accounts)
-forge script script/DemoSecretStore.s.sol --fork-url http://localhost:8545
-```
-
-Both demos will show:
-1. Contract deployment addresses
-2. Secret details and hashes
-3. Signatures from both parties
-4. The revealed secret
-
 ## Production Deployment
 
 ### Prerequisites
@@ -173,7 +134,44 @@ export MULTISIG_ADDRESS="0x..."
 export PRIVATE_KEY="your-private-key"  # Only if not using hardware wallet
 ```
 
-### Option 1: Using Hardware Wallet (Recommended)
+### Development Deployment (Recommended First Step)
+Before deploying to testnet or mainnet, practice the deployment process locally:
+
+```bash
+# Start local Ethereum node
+anvil
+
+# In a new terminal, deploy to local node
+# This will use Anvil's default test accounts
+forge script script/Deploy.s.sol \
+    --rpc-url http://localhost:8545 \
+    --broadcast \
+    --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+# Verify the deployment output:
+# - Check Implementation address
+# - Check Proxy address
+# - Confirm role setup for admin/upgrader/pauser
+# - Test basic functionality
+```
+
+### Testnet Deployment
+After successful local testing, deploy to your chosen testnet:
+
+```bash
+# Deploy to testnet (e.g., Sepolia)
+forge script script/Deploy.s.sol \
+    --rpc-url $RPC_URL \
+    --broadcast \
+    --verify \
+    --verifier-url $VERIFIER_URL \
+    --etherscan-api-key $ETHERSCAN_KEY \
+    --private-key $PRIVATE_KEY
+```
+
+### Mainnet Deployment
+
+#### Option 1: Using Hardware Wallet (Recommended)
 For secure production deployment, use a hardware wallet like Ledger:
 
 ```bash
@@ -188,7 +186,7 @@ forge script script/Deploy.s.sol \
     --etherscan-api-key $ETHERSCAN_KEY
 ```
 
-### Option 2: Using Private Key
+#### Option 2: Using Private Key
 ```bash
 # Deploy using private key (less secure)
 forge script script/Deploy.s.sol \
@@ -200,39 +198,12 @@ forge script script/Deploy.s.sol \
     --etherscan-api-key $ETHERSCAN_KEY
 ```
 
-### Deployment Process
-The deployment script will:
-1. Deploy implementation contract
-2. Deploy proxy contract
-3. Initialize with deployer as temporary admin
-4. Transfer all roles to multisig wallet:
-   - DEFAULT_ADMIN_ROLE
-   - UPGRADER_ROLE
-   - PAUSER_ROLE
-5. Renounce all deployer roles
-6. Verify role configuration:
-   - Confirm multisig has all required roles
-   - Verify deployer has no remaining roles
-   - Check no roles assigned to zero address
-
 ### Post-Deployment Verification
-After deployment, verify:
-1. Contract addresses are correct
-2. Multisig has received all roles
-3. Deployer has no remaining roles
-4. Contract is properly initialized
-
-You can verify the role setup using the provided script:
-```bash
-forge script script/VerifyRoles.s.sol \
-    --rpc-url $RPC_URL \
-    --sig "verify(address)" $PROXY_ADDRESS
-```
-
-The `--hd-paths` option specifies which account to use on your Ledger:
-- `m/44'/60'/0'/0/0` - First Ethereum account
-- `m/44'/60'/0'/0/1` - Second Ethereum account
-- `m/44'/60'/0'/0/2` - Third Ethereum account
+After any deployment:
+1. Verify the implementation and proxy addresses in the deployment output
+2. Confirm that all roles (DEFAULT_ADMIN_ROLE, UPGRADER_ROLE, PAUSER_ROLE) are properly set
+3. Test basic functionality (secret registration and revelation)
+4. For mainnet, conduct a thorough security review of the deployment
 
 ## Role Management
 
@@ -325,3 +296,42 @@ This comprehensive test suite includes:
 - Invariant testing for critical security properties
 - Size limit and gas usage analysis
 - Upgrade safety tests
+
+## Demo
+There are two ways to run the demo:
+
+### Option 1: Interactive Demo (Recommended)
+This option runs the demo step by step with pauses and clear output:
+
+```bash
+# Start a local Ethereum node (in a separate terminal)
+anvil
+
+# Set environment variables for the demo
+export SECRET="my secret message"  # The secret to store
+export REVEAL_PARTY="A"           # Which party reveals the secret (A or B)
+
+# Run the interactive demo
+./demo_runner.sh
+```
+
+### Option 2: Quick Demo
+This option runs through all steps at once and shows the output at the end:
+
+```bash
+# Start a local Ethereum node (in a separate terminal)
+anvil
+
+# Set environment variables for the demo
+export SECRET="my secret message"  # The secret to store
+export REVEAL_PARTY="A"           # Which party reveals the secret (A or B)
+
+# Run the demo script (uses Anvil's default test accounts)
+forge script script/DemoSecretStore.s.sol --fork-url http://localhost:8545
+```
+
+Both demos will show:
+1. Contract deployment addresses
+2. Secret details and hashes
+3. Signatures from both parties
+4. The revealed secret
