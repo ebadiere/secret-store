@@ -8,6 +8,7 @@ import {IERC1967} from "@openzeppelin/contracts/interfaces/IERC1967.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 interface IUpgradeableProxy {
     function upgradeTo(address newImplementation) external;
@@ -392,50 +393,72 @@ contract SecretStoreTest is Test {
         assertFalse(store.hasRole(store.DEFAULT_ADMIN_ROLE(), address(this)), "Role should be renounced");
     }
 
-    /// @notice Test role hierarchy
-    /// @dev Verifies that only admin can manage other roles
-    function testRoleHierarchy() public {
+    /// @notice Test role hierarchy and admin rights in detail
+    function test_RoleHierarchyDetailed() public {
         address admin = makeAddr("admin");
         address pauser = makeAddr("pauser");
         address upgrader = makeAddr("upgrader");
-        address another = makeAddr("another");
 
         // Grant admin role
         store.grantRole(store.DEFAULT_ADMIN_ROLE(), admin);
 
-        // Admin can grant other roles
+        // Switch to admin
         vm.startPrank(admin);
+
+        // Admin should be able to grant all roles
         store.grantRole(store.PAUSER_ROLE(), pauser);
         store.grantRole(store.UPGRADER_ROLE(), upgrader);
+        assertTrue(store.hasRole(store.PAUSER_ROLE(), pauser), "Pauser role should be granted");
+        assertTrue(store.hasRole(store.UPGRADER_ROLE(), upgrader), "Upgrader role should be granted");
         vm.stopPrank();
 
-        // Non-admin roles cannot grant roles
+        // Non-admin roles should not be able to grant roles
         vm.startPrank(pauser);
-        bytes32 role = store.PAUSER_ROLE();
-        vm.expectRevert(accessControlError(pauser, store.DEFAULT_ADMIN_ROLE()));
-        store.grantRole(role, another);
+        bytes32 pauserRole = store.PAUSER_ROLE();
+        vm.expectRevert(abi.encodeWithSelector(
+            IAccessControl.AccessControlUnauthorizedAccount.selector,
+            pauser,
+            store.DEFAULT_ADMIN_ROLE()
+        ));
+        store.grantRole(pauserRole, makeAddr("newPauser"));
         vm.stopPrank();
 
         vm.startPrank(upgrader);
-        role = store.UPGRADER_ROLE();
-        vm.expectRevert(accessControlError(upgrader, store.DEFAULT_ADMIN_ROLE()));
-        store.grantRole(role, another);
+        bytes32 upgraderRole = store.UPGRADER_ROLE();
+        vm.expectRevert(abi.encodeWithSelector(
+            IAccessControl.AccessControlUnauthorizedAccount.selector,
+            upgrader,
+            store.DEFAULT_ADMIN_ROLE()
+        ));
+        store.grantRole(upgraderRole, makeAddr("newUpgrader"));
         vm.stopPrank();
 
-        // Only admin can revoke roles
-        vm.startPrank(pauser);
-        role = store.PAUSER_ROLE();
-        vm.expectRevert(accessControlError(pauser, store.DEFAULT_ADMIN_ROLE()));
-        store.revokeRole(role, another);
-        vm.stopPrank();
+        // Test getRoleAdmin
+        assertEq(store.getRoleAdmin(store.PAUSER_ROLE()), store.DEFAULT_ADMIN_ROLE(), "DEFAULT_ADMIN_ROLE should be admin of PAUSER_ROLE");
+        assertEq(store.getRoleAdmin(store.UPGRADER_ROLE()), store.DEFAULT_ADMIN_ROLE(), "DEFAULT_ADMIN_ROLE should be admin of UPGRADER_ROLE");
+        assertEq(store.getRoleAdmin(store.DEFAULT_ADMIN_ROLE()), store.DEFAULT_ADMIN_ROLE(), "DEFAULT_ADMIN_ROLE should be self-administered");
+    }
 
-        // Admin can revoke all roles
-        vm.startPrank(admin);
-        store.revokeRole(store.PAUSER_ROLE(), pauser);
-        store.revokeRole(store.UPGRADER_ROLE(), upgrader);
-        assertFalse(store.hasRole(store.PAUSER_ROLE(), pauser), "Pauser role should be revoked");
-        assertFalse(store.hasRole(store.UPGRADER_ROLE(), upgrader), "Upgrader role should be revoked");
-        vm.stopPrank();
+    /// @notice Test role enumeration
+    function test_RoleEnumeration() public {
+        address admin = makeAddr("admin");
+        address pauser1 = makeAddr("pauser1");
+        address pauser2 = makeAddr("pauser2");
+
+        // Grant roles
+        store.grantRole(store.DEFAULT_ADMIN_ROLE(), admin);
+        store.grantRole(store.PAUSER_ROLE(), pauser1);
+        store.grantRole(store.PAUSER_ROLE(), pauser2);
+
+        // Test that all roles are properly tracked
+        assertTrue(store.hasRole(store.DEFAULT_ADMIN_ROLE(), admin), "Admin role not tracked");
+        assertTrue(store.hasRole(store.PAUSER_ROLE(), pauser1), "Pauser1 role not tracked");
+        assertTrue(store.hasRole(store.PAUSER_ROLE(), pauser2), "Pauser2 role not tracked");
+
+        // Revoke a role
+        store.revokeRole(store.PAUSER_ROLE(), pauser1);
+        assertFalse(store.hasRole(store.PAUSER_ROLE(), pauser1), "Pauser1 role should be revoked");
+        assertTrue(store.hasRole(store.PAUSER_ROLE(), pauser2), "Pauser2 role should still exist");
     }
 
     /// @notice Test role separation

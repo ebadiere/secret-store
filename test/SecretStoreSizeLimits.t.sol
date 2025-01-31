@@ -56,6 +56,30 @@ contract SecretStoreSizeLimitsTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Helper function to generate signatures for secret registration
+    /// @dev Generates EIP-712 compliant signatures for both parties
+    /// @param secretHash Hash of the secret and salt
+    /// @return signatureA Party A's signature
+    /// @return signatureB Party B's signature
+    function _generateSignatures(bytes32 secretHash) internal view returns (bytes memory signatureA, bytes memory signatureB) {
+        bytes32 domainSeparator = _computeDomainSeparator();
+        bytes32 structHash = keccak256(
+            abi.encode(
+                secretStore.AGREEMENT_TYPE_HASH(),
+                secretHash,
+                partyA,
+                partyB
+            )
+        );
+        bytes32 digest = _hashTypedDataV4(domainSeparator, structHash);
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(1, digest);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(2, digest);
+
+        signatureA = abi.encodePacked(r1, s1, v1);
+        signatureB = abi.encodePacked(r2, s2, v2);
+    }
+
     /// @notice Validates contract operation with maximum recommended secret size
     /// @dev Test flow:
     /// 1. Generate 50KB secret (recommended limit)
@@ -68,28 +92,13 @@ contract SecretStoreSizeLimitsTest is Test {
     /// - Validates event data integrity
     /// - Ensures complete secret recovery
     function test_LargeSecret() public {
-        // Generate a 50KB secret (recommended maximum size)
+        // Generate a 50KB secret and compute its hash
         string memory largeSecret = _generateLargeString(50 * 1024);
         bytes32 salt = keccak256(abi.encodePacked("salt"));
         bytes32 secretHash = keccak256(abi.encodePacked(largeSecret, salt));
 
         // Get signatures from both parties
-        bytes32 domainSeparator = _computeDomainSeparator();
-        bytes32 structHash = keccak256(
-            abi.encode(
-                secretStore.AGREEMENT_TYPE_HASH(),
-                secretHash,
-                partyA,
-                partyB
-            )
-        );
-        bytes32 digest = _hashTypedDataV4(domainSeparator, structHash);
-
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(1, digest); // Private key 1 for partyA
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(2, digest); // Private key 2 for partyB
-
-        bytes memory signatureA = abi.encodePacked(r1, s1, v1);
-        bytes memory signatureB = abi.encodePacked(r2, s2, v2);
+        (bytes memory signatureA, bytes memory signatureB) = _generateSignatures(secretHash);
 
         // Register the secret
         secretStore.registerSecret(
@@ -106,26 +115,58 @@ contract SecretStoreSizeLimitsTest is Test {
 
         // Reveal the large secret
         vm.prank(partyA);
-        secretStore.revealSecret(
-            largeSecret,
-            salt,
-            secretHash
+        secretStore.revealSecret(largeSecret, salt, secretHash);
+    }
+
+    /// @notice Helper function to register and reveal a secret
+    /// @dev Handles the full process of secret registration and revelation
+    /// @param size Size of the secret to test
+    function _testSecretWithSize(uint256 size) internal {
+        string memory secret = _generateLargeString(size);
+        bytes32 salt = keccak256(abi.encodePacked("salt"));
+        bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
+
+        // Get signatures and register
+        (bytes memory signatureA, bytes memory signatureB) = _generateSignatures(secretHash);
+        secretStore.registerSecret(secretHash, partyA, partyB, signatureA, signatureB);
+
+        // Reveal secret
+        vm.prank(partyA);
+        secretStore.revealSecret(secret, salt, secretHash);
+
+        // Log gas usage
+        emit log_named_uint(
+            string(abi.encodePacked("Gas used for ", uint2str(size / 1024), "KB secret")),
+            gasleft()
         );
     }
 
+    /// @notice Simple uint to string conversion
+    /// @dev Avoids using OpenZeppelin's toString to reduce stack usage
+    function uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint256 j = _i;
+        uint256 len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint256 k = len;
+        while (_i != 0) {
+            k = k-1;
+            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
+    }
+
     /// @notice Gas usage analysis across secret sizes
-    /// @dev Test methodology:
-    /// 1. Tests 4 size points: 1KB, 10KB, 50KB, 100KB
-    /// 2. Measures gas for registration and revelation
-    /// 3. Logs results for analysis
-    ///
-    /// Size selection rationale:
-    /// - 1KB: Baseline for small secrets
-    /// - 10KB: Common use case size
-    /// - 50KB: Recommended maximum
-    /// - 100KB: Stress test beyond recommendations
     function test_LargeSecretGasUsage() public {
-        // Test with different secret sizes to demonstrate gas usage
         uint256[] memory sizes = new uint256[](4);
         sizes[0] = 1 * 1024;     // 1KB
         sizes[1] = 10 * 1024;    // 10KB
@@ -133,49 +174,7 @@ contract SecretStoreSizeLimitsTest is Test {
         sizes[3] = 100 * 1024;   // 100KB
 
         for (uint256 i = 0; i < sizes.length; i++) {
-            string memory secret = _generateLargeString(sizes[i]);
-            bytes32 salt = keccak256(abi.encodePacked("salt"));
-            bytes32 secretHash = keccak256(abi.encodePacked(secret, salt));
-
-            // Get signatures
-            bytes32 domainSeparator = _computeDomainSeparator();
-            bytes32 structHash = keccak256(
-                abi.encode(
-                    secretStore.AGREEMENT_TYPE_HASH(),
-                    secretHash,
-                    partyA,
-                    partyB
-                )
-            );
-            bytes32 digest = _hashTypedDataV4(domainSeparator, structHash);
-
-            (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(1, digest);
-            (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(2, digest);
-
-            bytes memory signatureA = abi.encodePacked(r1, s1, v1);
-            bytes memory signatureB = abi.encodePacked(r2, s2, v2);
-
-            // Register and reveal to measure gas
-            secretStore.registerSecret(
-                secretHash,
-                partyA,
-                partyB,
-                signatureA,
-                signatureB
-            );
-
-            vm.prank(partyA);
-            secretStore.revealSecret(
-                secret,
-                salt,
-                secretHash
-            );
-
-            // Log gas usage (this will help users understand real costs)
-            emit log_named_uint(
-                string(abi.encodePacked("Gas used for ", Strings.toString(sizes[i] / 1024), "KB secret")),
-                gasleft()
-            );
+            _testSecretWithSize(sizes[i]);
         }
     }
 
