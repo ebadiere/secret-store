@@ -33,6 +33,10 @@ contract SecretStore is
 {
  
     /// @dev Role IDs for authorization
+    /// The bytes32 type is used because:
+    /// 1. It matches keccak256's output size (32 bytes)
+    /// 2. It's gas efficient as a fixed-size type
+    /// 3. It ensures compatibility with AccessControl's role system    
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
@@ -290,13 +294,6 @@ contract SecretStore is
         return _CACHED_DOMAIN_SEPARATOR;
     }
 
-    /// @notice Gets the chain ID used for EIP-712 signatures
-    /// @dev Gas optimization: Return cached value directly
-    /// This avoids the CHAINID opcode cost
-    /// @return The chain ID used for signatures
-    function getChainId() public view returns (uint256) {
-        return _CACHED_CHAIN_ID;
-    }
 
     /// @notice Identifies this contract as UUPS-compatible for proxies
     /// @dev Required by EIP-1822 (UUPS) to prove upgrade compatibility.
@@ -340,6 +337,11 @@ contract SecretStore is
     /// 1. Only UPGRADER_ROLE can perform upgrades
     /// 2. The function MUST be present in new implementations
     /// 3. If removed, the contract becomes non-upgradeable
+    /// 
+    /// Note: While this implementation only performs a read-only check, the function
+    /// cannot be marked as `view` because it is part of the upgrade process which
+    /// modifies state in the proxy contract. The compiler warning about this can
+    /// be safely ignored.
     /// 
     /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(address newImplementation)
