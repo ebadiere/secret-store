@@ -22,6 +22,8 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 contract SecretStoreUpgradeTest is Test {
     using MessageHashUtils for bytes32;
 
+    event Upgraded(address indexed implementation);  // Standard UUPSUpgradeable event
+
     /// @dev Core contract instances and test accounts
     SecretStore public implementation;
     SecretStore public store;
@@ -95,7 +97,11 @@ contract SecretStoreUpgradeTest is Test {
         vm.stopPrank();
 
         // Upgrade from authorized account should work
+        vm.startPrank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit Upgraded(address(newImplementation));
         store.upgradeToAndCall(address(newImplementation), "");
+        vm.stopPrank();
     }
 
     /// @notice Implementation address validation

@@ -55,8 +55,8 @@ contract SecretStoreTest is Test {
     uint256 public PARTY_B_PRIVATE_KEY = 0x5678;
 
     // Events for validating pause functionality
-    event SecretStorePaused(address indexed account);
-    event SecretStoreUnpaused(address indexed account);
+    event Paused(address account);
+    event Unpaused(address account);
     event Debug_Signature(
         bytes32 structHash,
         bytes32 digest,
@@ -663,7 +663,7 @@ contract SecretStoreTest is Test {
     }
 
     /// @notice Test pause event emission
-    /// @dev Verifies that the SecretStorePaused event is emitted with correct parameters
+    /// @dev Verifies that the Paused event is emitted with correct parameters
     function testPauseEvent() public {
         address pauser = makeAddr("pauser");
         bytes32 pauserRole = store.PAUSER_ROLE();
@@ -673,13 +673,13 @@ contract SecretStoreTest is Test {
 
         vm.startPrank(pauser);
         vm.expectEmit(true, false, false, false);
-        emit SecretStorePaused(pauser);
+        emit Paused(pauser);
         store.pause();
         vm.stopPrank();
     }
 
     /// @notice Test unpause event emission
-    /// @dev Verifies that the SecretStoreUnpaused event is emitted with correct parameters
+    /// @dev Verifies that the Unpaused event is emitted with correct parameters
     function testUnpauseEvent() public {
         address pauser = makeAddr("pauser");
         bytes32 pauserRole = store.PAUSER_ROLE();
@@ -690,7 +690,7 @@ contract SecretStoreTest is Test {
         vm.startPrank(pauser);
         store.pause();
         vm.expectEmit(true, false, false, false);
-        emit SecretStoreUnpaused(pauser);
+        emit Unpaused(pauser);
         store.unpause();
         vm.stopPrank();
     }

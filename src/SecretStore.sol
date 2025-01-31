@@ -118,11 +118,6 @@ contract SecretStore is
         string secret
     );
 
-    /// @dev Gas optimization: We index the pauser address for filtering pause events
-    /// by address, which is useful for monitoring and alerting systems
-    event SecretStorePaused(address indexed pauser);
-    event SecretStoreUnpaused(address indexed pauser);
-
     /// @dev Event emitted when agreement is deleted
     /// @param secretHash Hash of the secret and salt, computed as keccak256(abi.encodePacked(secret, salt))
     /// @param revealer Address that deleted the agreement
@@ -307,7 +302,6 @@ contract SecretStore is
     /// @custom:security Only callable by accounts with PAUSER_ROLE
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
-        emit SecretStorePaused(msg.sender);
     }
 
     /// @notice Unpauses all contract operations
@@ -316,7 +310,6 @@ contract SecretStore is
     /// @custom:security Only callable by accounts with PAUSER_ROLE
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
-        emit SecretStoreUnpaused(msg.sender);
     }
 
     /// @notice Authorizes an upgrade to a new implementation
