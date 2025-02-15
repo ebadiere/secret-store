@@ -7,6 +7,7 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
 /// @title SecretStore
 /// @notice A contract for securely storing and revealing secrets between two parties
@@ -29,7 +30,8 @@ contract SecretStore is
     UUPSUpgradeable,
     AccessControlUpgradeable,
     PausableUpgradeable,
-    ReentrancyGuardUpgradeable
+    ReentrancyGuardUpgradeable,
+    EIP712Upgradeable
 {
     /// @dev Custom errors for better gas efficiency and clearer error messages
     error ZeroAddress();
@@ -72,21 +74,6 @@ contract SecretStore is
         keccak256(
             "Agreement(bytes32 secretHash,address partyA,address partyB)"
         );
-
-    /// @dev Domain separator caching for gas optimization
-    /// The domain separator is cached during initialization and never updated.
-    ///
-    /// Important: This is a gas optimization that comes with a trade-off:
-    /// In case of a chain fork, the cached chainId will remain that of the
-    /// original chain, making all signatures invalid on the forked chain.
-    /// Since the values are set in the proxy's storage during initialization
-    /// and cannot be reinitialized, this would require deploying an entirely
-    /// new proxy contract on the forked chain (losing all existing agreements).
-    ///
-    /// This design decision prioritizes gas efficiency for the common case,
-    /// accepting the limitation during the rare event of a chain fork.
-    bytes32 private _CACHED_DOMAIN_SEPARATOR;
-    uint256 private _CACHED_CHAIN_ID;
 
     /// @notice Mapping of secret hashes to their agreements
     /// @dev Gas optimization: Using a single mapping instead of separate mappings
@@ -153,14 +140,12 @@ contract SecretStore is
         __Pausable_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
+        __EIP712_init("SecretStore", "1");
 
+        // Set up roles
         _grantRole(DEFAULT_ADMIN_ROLE, deployer);
         _grantRole(PAUSER_ROLE, deployer);
         _grantRole(UPGRADER_ROLE, deployer);
-
-        // Cache the domain separator and chain ID
-        _CACHED_CHAIN_ID = block.chainid;
-        _CACHED_DOMAIN_SEPARATOR = _computeDomainSeparator();
     }
 
     /// @notice Register a new secret agreement between two parties
@@ -193,21 +178,18 @@ contract SecretStore is
             abi.encode(AGREEMENT_TYPE_HASH, secretHash, partyA, partyB)
         );
 
-        // Cache the EIP-712 hash to avoid recomputation
-        bytes32 hash = _hashTypedDataV4(structHash);
-
         // Verify both signatures using OpenZeppelin's SignatureChecker
         // This supports both EOA and ERC-1271 contract signatures (e.g., multi-sigs)
         bool validA = SignatureChecker.isValidSignatureNow(
             partyA,
-            hash,
+            _hashTypedDataV4(structHash),
             signatureA
         );
         if (!validA) revert InvalidSignature();
 
         bool validB = SignatureChecker.isValidSignatureNow(
             partyB,
-            hash,
+            _hashTypedDataV4(structHash),
             signatureB
         );
         if (!validB) revert InvalidSignature();
@@ -258,30 +240,6 @@ contract SecretStore is
         emit AgreementDeleted(secretHash, msg.sender);
     }
 
-    /// @notice Gets the domain separator for EIP-712 signatures
-    /// @dev Gas optimization: Return cached value directly
-    /// Chain ID changes are handled at deployment time
-    /// @return The current domain separator
-    function DOMAIN_SEPARATOR() public view returns (bytes32) {
-        return _CACHED_DOMAIN_SEPARATOR;
-    }
-
-    /// @notice Identifies this contract as UUPS-compatible for proxies
-    /// @dev Required by EIP-1822 (UUPS) to prove upgrade compatibility.
-    /// This function doesn't use storage itself, but returns a magic value
-    /// (keccak256("PROXIABLE")) that:
-    /// 1. The proxy uses as a storage slot for the implementation address
-    /// 2. Acts as a "marker" to verify upgrade compatibility
-    /// 3. Standardizes where all UUPS proxies store their implementation
-    ///
-    /// Note: This implementation contract never uses this slot - only
-    /// the proxy uses it to store our address.
-    /// @return bytes32 The magic value keccak256("PROXIABLE")
-    function proxiableUUID() external pure override returns (bytes32) {
-        return
-            0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
-    }
-
     /// @notice Pauses all contract operations
     /// @dev Gas optimization: Uses OpenZeppelin's onlyRole modifier
     /// which has optimized role checking
@@ -297,6 +255,18 @@ contract SecretStore is
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
     }
+
+    /// @notice Returns the domain separator used in the encoding of the signature for permits, as defined by EIP-712
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    /// @notice Gap for adding new storage variables in upgrades
+    /// @dev This empty reserved space is put in place to allow future versions to add new
+    /// variables without shifting down storage in the inheritance chain.
+    /// The size of 50 is chosen by OpenZeppelin as a reasonable upper bound for most contracts.
+    /// MUST remain at the end of the contract to ensure storage layout compatibility during upgrades.
+    uint256[50] private __gap;
 
     /// @notice Authorizes an upgrade to a new implementation
     /// @dev Required by the UUPSUpgradeable contract (EIP-1822) to authorize upgrades.
@@ -319,50 +289,4 @@ contract SecretStore is
     ) internal override onlyRole(UPGRADER_ROLE) {
         if (newImplementation == address(0)) revert ZeroAddress();
     }
-
-    /// @dev Returns the hash of typed data for EIP-712 signatures
-    /// @dev This implementation follows the EIP-712 specification:
-    /// - \x19 is a version byte to make the encoding unique and prevent signed data from being executable
-    /// - \x01 is the version byte that indicates EIP-712 structured data
-    /// Together, \x19\x01 ensures this signature cannot be misinterpreted as another signing format
-    /// @dev Uses cached domain separator to reduce gas costs
-    /// and minimize memory allocation in the hot path
-    /// @param structHash The hash of the struct being signed
-    /// @return bytes32 The final hash to be signed
-    function _hashTypedDataV4(
-        bytes32 structHash
-    ) internal view returns (bytes32) {
-        bytes32 separator = _CACHED_DOMAIN_SEPARATOR;
-        return keccak256(abi.encodePacked("\x19\x01", separator, structHash));
-    }
-
-    /// @dev Computes the domain separator for EIP-712 signatures
-    /// @dev Gas optimization: This function is only called during initialization
-    /// and in the rare case of a chain ID change. The expensive keccak256
-    /// operations are acceptable here since this is not in the hot path.
-    /// @return The computed domain separator
-    function _computeDomainSeparator() internal view returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    keccak256(
-                        abi.encodePacked(
-                            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                        )
-                    ),
-                    keccak256(abi.encodePacked("SecretStore")),
-                    keccak256(abi.encodePacked("1")),
-                    _CACHED_CHAIN_ID,
-                    address(this)
-                )
-            );
-    }
-
-    /// @notice Gap for adding new storage variables in upgrades
-    /// @dev This empty reserved space is put in place to allow future versions to add new
-    /// variables without shifting down storage in the inheritance chain.
-    /// See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
-    /// The size of 50 is chosen by OpenZeppelin as a reasonable upper bound for most contracts.
-    /// MUST remain at the end of the contract to ensure storage layout compatibility during upgrades.
-    uint256[50] private __gap;
 }
