@@ -41,7 +41,7 @@ forge test
 ```bash
 forge clean && forge build --force && forge test -vvv
 ```
-> Note: You will see a warning about the `_authorizeUpgrade` function's state mutability (Warning 2018). This is expected as the function is intentionally left non-view to match OpenZeppelin's UUPS interface. See the NatSpec documentation in the contract for details.
+> Note: The `_authorizeUpgrade` function includes a pause check to ensure upgrades can only occur when the contract is paused. This is an important security feature that prevents upgrades during active operations.
 
 ## Project Structure
 
@@ -99,6 +99,8 @@ The contract has been thoroughly tested with secrets of various sizes:
 - EIP-712 typed signatures for secure message signing
 - Protection against replay attacks
 - Role-based access control for administrative functions
+- Upgrades require contract to be paused first
+- Comprehensive security testing including fuzz and invariant tests
 - Pausable functionality for emergency stops
 - Upgradeable pattern for future security improvements
 

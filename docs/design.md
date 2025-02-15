@@ -44,9 +44,11 @@ SecretStore addresses broader protocol needs:
 
 3. **Role-Based Access Control**  
    - Separates roles for upgrading (`UPGRADER_ROLE`) and pausing (`PAUSER_ROLE`).
+   - Upgrades require both UPGRADER_ROLE and an active pause state.
 
 4. **Emergency Pause**  
    - Suspends key operations instantly during a crisis.
+   - Required for contract upgrades to prevent state changes during upgrade.
 
 5. **Cross-Chain Compatibility**  
    - Incorporates `chainId` into signatures to block replay on other networks.
@@ -132,52 +134,53 @@ Unless there is a strong requirement for contract-based signers (EIP-1271) or si
 
 ---
 
-## 5. System Architecture
+## 5. UUPS Upgrade Pattern
 
-### UUPS Proxy (EIP-1822)
+The contract implements the UUPS (Universal Upgradeable Proxy Standard) pattern with additional safety measures:
 
-- **Minimal Proxy** delegates all calls to the **implementation** contract.  
-- Implementation maintains both logic and state.  
-- `_authorizeUpgrade` is restricted to `UPGRADER_ROLE`.  
-- Adheres to EIP-1967 for standardized storage slots.
+1. **Upgrade Authorization**
+   - Requires `UPGRADER_ROLE`
+   - Contract must be paused before upgrade
+   - Prevents upgrades during active operations
+   - Ensures all parties can prepare for upgrade
 
-### Access Control
-
-- **OpenZeppelin AccessControl**:  
-  - `DEFAULT_ADMIN_ROLE` for overall management.  
-  - `UPGRADER_ROLE` for upgrades.  
-  - `PAUSER_ROLE` to pause/unpause the contract.
-
-### Pausable
-
-- **Emergency Mechanism**  
-  - Halts `registerSecret` and `revealSecret` when paused, stopping critical functionality during potential exploits.
-
-### EIP-712
-
-- **Domain Separation**  
-  - Captures `chainId`, contract address, and version.  
-
-- **Structured Data**  
-  - Off-chain signing of typed fields to thwart replay attacks.
+2. **Storage Layout**
+   - Follows OpenZeppelin's storage patterns
+   - Uses storage gaps for future expansion
+   - Maintains strict ordering for upgrades
 
 ---
 
 ## 6. Data Model
 
-    struct Agreement {
-        address partyA;       // 160 bits
-        address partyB;       // 160 bits
-        uint96  timestamp;    // 96 bits
-        uint64  blockNumber;  // 64 bits
-    }
+### Agreement Storage
 
-    // Mapping from secretHash => Agreement
-    mapping(bytes32 => Agreement) public agreements;
+The `Agreement` struct is optimized for gas efficiency through careful packing:
 
-- **Key**: `secretHash` = `keccak256(abi.encodePacked(secret, salt))`.  
-- **Value**: An `Agreement` storing participants and block/timestamp of registration.  
-- **Packed** to minimize storage slots.
+```solidity
+struct Agreement {
+    address partyA;     // 20 bytes
+    uint96 timestamp;   // 12 bytes (fills remaining space in first slot)
+    address partyB;     // 20 bytes
+    uint64 blockNumber; // 8 bytes (12 bytes remaining in second slot)
+}
+```
+
+**Storage Layout Optimization:**
+- Total storage: 2 slots (64 bytes)
+- First slot (32 bytes):
+  - `partyA`: 20 bytes for the first party's address
+  - `timestamp`: 12 bytes for Unix timestamp (sufficient until year 2255+)
+- Second slot (32 bytes):
+  - `partyB`: 20 bytes for the second party's address
+  - `blockNumber`: 8 bytes for block number (sufficient for 1000+ years)
+  - Remaining: 4 bytes available for future use
+
+**Design Decisions:**
+- Timestamp and block number provide dual time verification
+- Addresses are stored in full to maintain security
+- Careful consideration of field sizes vs. practical limits
+- Future-proof timestamp range (200+ years)
 
 ---
 
@@ -292,6 +295,7 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 
 ### Upgrade Security
 - Only `UPGRADER_ROLE` can call `_authorizeUpgrade`
+- Contract must be paused before upgrade
 - Adheres to a stable storage layout
 
 ### Emergency Pause
@@ -324,7 +328,8 @@ To safely upgrade the contract:
 1. **Announcement**: Notify all users of the upcoming upgrade with sufficient notice
 2. **Secret Revelation Period**: Allow time for all parties to reveal their secrets
 3. **Verification**: Confirm no active secrets remain in storage
-4. **Upgrade Execution**: Only proceed with upgrade after all secrets are revealed
+4. **Pause Contract**: Pause the contract to prevent new registrations and revelations
+5. **Upgrade Execution**: Only proceed with upgrade after all secrets are revealed and the contract is paused
 
 ### Storage Compatibility
 The contract uses the UUPS proxy pattern for upgrades. New implementations must:
