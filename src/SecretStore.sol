@@ -106,14 +106,6 @@ contract SecretStore is
         string secret
     );
 
-    /// @dev Event emitted when agreement is deleted
-    /// @param secretHash Hash of the secret and salt, computed as keccak256(abi.encodePacked(secret, salt))
-    /// @param revealer Address that deleted the agreement
-    event AgreementDeleted(
-        bytes32 indexed secretHash,
-        address indexed revealer
-    );
-
     /// @dev Constructor required by the UUPSUpgradeable pattern.
     /// Must be empty because:
     /// 1. The implementation contract should never be initialized
@@ -236,8 +228,6 @@ contract SecretStore is
         delete agreements[secretHash];
 
         emit SecretRevealed(secretHash, msg.sender, secret);
-
-        emit AgreementDeleted(secretHash, msg.sender);
     }
 
     /// @notice Pauses all contract operations

@@ -300,8 +300,6 @@ contract SecretStoreTest is Test {
 
         // Reveal secret and verify agreement is deleted
         vm.prank(partyA);
-        vm.expectEmit(true, true, true, true);
-        emit SecretStore.AgreementDeleted(TEST_SECRET_HASH, partyA);
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
 
         // Check agreement is deleted
