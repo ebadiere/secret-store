@@ -158,7 +158,7 @@ contract SecretStoreUpgradeTest is Test {
         store.upgradeToAndCall(address(newImplementation), "");
         
         // Verify agreement storage after upgrade
-        (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
+        (address storedPartyA, , address storedPartyB, ) = store.agreements(secretHash);
         assertEq(storedPartyA, partyA, "PartyA not preserved after upgrade");
         assertEq(storedPartyB, partyB, "PartyB not preserved after upgrade");
         
@@ -180,7 +180,7 @@ contract SecretStoreUpgradeTest is Test {
     /// @param secretHash Identifier for the agreement
     /// @return tuple(address, address) PartyA and PartyB addresses
     function _getParties(bytes32 secretHash) internal view returns (address, address) {
-        (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
+        (address storedPartyA, , address storedPartyB, ) = store.agreements(secretHash);
         return (storedPartyA, storedPartyB);
     }
 

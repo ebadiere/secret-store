@@ -647,7 +647,7 @@ contract SecretStoreTest is Test {
     /// @param secretHash The hash identifying the agreement
     /// @return Two addresses: partyA and partyB (zero addresses if agreement doesn't exist)
     function _getParties(bytes32 secretHash) internal view returns (address, address) {
-        (address storedPartyA, address storedPartyB, , ) = store.agreements(secretHash);
+        (address storedPartyA, , address storedPartyB, ) = store.agreements(secretHash);
         return (storedPartyA, storedPartyB);
     }
 
@@ -658,7 +658,7 @@ contract SecretStoreTest is Test {
         view
         returns (bool exists, address partyA_, address partyB_)
     {
-        (partyA_, partyB_, ,) = store.agreements(secretHash);
+        (partyA_, , partyB_, ) = store.agreements(secretHash);
         exists = partyA_ != address(0);
     }
 

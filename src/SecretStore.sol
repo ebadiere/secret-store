@@ -37,9 +37,9 @@ contract SecretStore is
     /// - partyA being address(0) indicates no agreement exists (used for existence checks)
     struct Agreement {
         address partyA; // 20 bytes
+        uint96 timestamp; // 12 bytes (fills remaining space in first slot)
         address partyB; // 20 bytes
-        uint96 timestamp; // 12 bytes
-        uint64 blockNumber; // 8 bytes
+        uint64 blockNumber; // 8 bytes (12 bytes remaining in second slot)
     }
 
     /// @dev Role IDs for authorization
@@ -205,8 +205,8 @@ contract SecretStore is
         // Write directly to storage once
         agreements[secretHash] = Agreement({
             partyA: partyA,
-            partyB: partyB,
             timestamp: uint96(block.timestamp),
+            partyB: partyB,
             blockNumber: uint64(block.number)
         });
 

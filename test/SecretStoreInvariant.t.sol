@@ -61,7 +61,7 @@ contract SecretStoreInvariantTest is Test {
         view
         returns (bool exists, address partyA_, address partyB_)
     {
-        (partyA_, partyB_, ,) = store.agreements(secretHash);
+        (partyA_, , partyB_, ) = store.agreements(secretHash);
         exists = partyA_ != address(0);
     }
 
