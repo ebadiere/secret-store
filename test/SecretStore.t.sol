@@ -104,7 +104,7 @@ contract SecretStoreTest is Test {
     /// @notice Test zero address admin initialization
     function testCannotInitializeWithZeroAddress() public {
         SecretStore implementation = new SecretStore();
-        vm.expectRevert("Deployer cannot be zero address");
+        vm.expectRevert(SecretStore.ZeroAddress.selector);
         new ERC1967Proxy(
             address(implementation),
             abi.encodeCall(SecretStore.initialize, (address(0)))
@@ -140,7 +140,7 @@ contract SecretStoreTest is Test {
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
-        vm.expectRevert("Secret already registered");
+        vm.expectRevert(SecretStore.SecretAlreadyRegistered.selector);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
     }
 
@@ -150,7 +150,7 @@ contract SecretStoreTest is Test {
     function testCannotRegisterWithSameParties() public {
         (bytes memory signatureA, ) = _createSignaturesHelper(TEST_SECRET_HASH);
 
-        vm.expectRevert("Parties must be different");
+        vm.expectRevert(SecretStore.PartiesMustBeDifferent.selector);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyA, signatureA, signatureA);
     }
 
@@ -210,15 +210,12 @@ contract SecretStoreTest is Test {
         (bytes memory signatureA, bytes memory signatureB) = _createSignaturesHelper(TEST_SECRET_HASH);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, signatureA, signatureB);
 
-        // Verify agreement is stored
-        (address storedPartyA, address storedPartyB) = _getParties(TEST_SECRET_HASH);
-        assertEq(storedPartyA, partyA, "PartyA not stored correctly");
-        assertEq(storedPartyB, partyB, "PartyB not stored correctly");
-
-        // Try to reveal as non-party
-        vm.prank(address(4));
-        vm.expectRevert("Not a party to agreement");
+        address nonParticipant = makeAddr("nonParticipant");
+        
+        vm.startPrank(nonParticipant);
+        vm.expectRevert(SecretStore.NotAParty.selector);
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
+        vm.stopPrank();
     }
 
     /// @notice Test prevention of wrong secret revelation
@@ -236,7 +233,7 @@ contract SecretStoreTest is Test {
 
         // Try to reveal with wrong secret
         vm.prank(partyA);
-        vm.expectRevert("Invalid secret or salt");
+        vm.expectRevert(SecretStore.InvalidSaltForSecret.selector);
         store.revealSecret("wrong secret", TEST_SALT, TEST_SECRET_HASH);
     }
 
@@ -250,7 +247,7 @@ contract SecretStoreTest is Test {
 
         // Try to reveal with wrong salt
         vm.prank(partyA);
-        vm.expectRevert("Invalid secret or salt");
+        vm.expectRevert(SecretStore.InvalidSaltForSecret.selector);
         store.revealSecret(TEST_SECRET, bytes32(uint256(456)), TEST_SECRET_HASH);
     }
 
@@ -260,7 +257,7 @@ contract SecretStoreTest is Test {
     function testCannotRevealNonExistentSecret() public {
         // Try to reveal a secret that was never registered
         vm.prank(partyA);
-        vm.expectRevert("Agreement does not exist");
+        vm.expectRevert(SecretStore.AgreementDoesNotExist.selector);
         store.revealSecret(TEST_SECRET, TEST_SALT, bytes32(uint256(999)));
     }
 
@@ -277,7 +274,7 @@ contract SecretStoreTest is Test {
 
         // Try to reveal again - should fail because agreement is deleted
         vm.prank(partyB);
-        vm.expectRevert("Agreement does not exist");
+        vm.expectRevert(SecretStore.AgreementDoesNotExist.selector);
         store.revealSecret(TEST_SECRET, TEST_SALT, TEST_SECRET_HASH);
     }
 
@@ -522,7 +519,7 @@ contract SecretStoreTest is Test {
         bytes memory validSigB = abi.encodePacked(r2, s2, v2);
 
         // Try to register with invalid partyA signature
-        vm.expectRevert("Invalid signature from partyA");
+        vm.expectRevert(SecretStore.InvalidSignature.selector);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, invalidSigA, validSigB);
 
         // Second test: swapped signatures
@@ -533,7 +530,7 @@ contract SecretStoreTest is Test {
         bytes memory wrongSigB = abi.encodePacked(r2, s2, v2); // Using partyA's signature for partyB
 
         // Try to register with wrong signatures
-        vm.expectRevert("Invalid signature from partyA");
+        vm.expectRevert(SecretStore.InvalidSignature.selector);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, wrongSigA, wrongSigB);
 
         // Third test: valid partyA but invalid partyB signature
@@ -544,7 +541,7 @@ contract SecretStoreTest is Test {
         bytes memory invalidSigB = abi.encodePacked(r2, s2, v2);
 
         // Try to register with invalid partyB signature
-        vm.expectRevert("Invalid signature from partyB");
+        vm.expectRevert(SecretStore.InvalidSignature.selector);
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, validSigA, invalidSigB);
     }
 
@@ -588,8 +585,14 @@ contract SecretStoreTest is Test {
         bytes memory sigB = abi.encodePacked(r2, s2, v2);
 
         // Try to use these signatures with the second contract
-        vm.expectRevert("Invalid signature from partyA");
-        storeTwo.registerSecret(TEST_SECRET_HASH, partyA, partyB, sigA, sigB);
+        vm.expectRevert(SecretStore.InvalidSignature.selector);
+        storeTwo.registerSecret(
+            TEST_SECRET_HASH,
+            partyA,
+            partyB,
+            sigA,
+            sigB
+        );
 
         // Verify the signatures still work with the original contract
         store.registerSecret(TEST_SECRET_HASH, partyA, partyB, sigA, sigB);

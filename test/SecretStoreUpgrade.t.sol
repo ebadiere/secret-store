@@ -110,8 +110,10 @@ contract SecretStoreUpgradeTest is Test {
     /// 2. Prevents accidental proxy bricking
     /// 3. Maintains upgrade safety checks
     function testCannotUpgradeToZeroAddress() public {
-        vm.expectRevert("Invalid implementation address");
+        vm.startPrank(admin);
+        vm.expectRevert(SecretStore.ZeroAddress.selector);
         store.upgradeToAndCall(address(0), "");
+        vm.stopPrank();
     }
 
     /// @notice State preservation verification

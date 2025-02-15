@@ -31,6 +31,16 @@ contract SecretStore is
     PausableUpgradeable,
     ReentrancyGuardUpgradeable
 {
+    /// @dev Custom errors for better gas efficiency and clearer error messages
+    error ZeroAddress();
+    error SecretAlreadyRegistered();
+    error InvalidPartyAddress();
+    error PartiesMustBeDifferent();
+    error InvalidSignature();
+    error AgreementDoesNotExist();
+    error InvalidSaltForSecret();
+    error NotAParty();
+
     /// @dev This packing reduces storage operations from 4 slots to 2 slots (~43% gas savings)
     /// - timestamp as uint96 supports dates until year 2^96 (far future)
     /// - blockNumber as uint64 supports very high block numbers
@@ -137,7 +147,7 @@ contract SecretStore is
     /// 5. Grants initial roles to deployer (should be transferred after deployment)
     /// @param deployer Address to be granted all initial roles (DEFAULT_ADMIN_ROLE, PAUSER_ROLE, UPGRADER_ROLE)
     function initialize(address deployer) external initializer {
-        require(deployer != address(0), "Deployer cannot be zero address");
+        if (deployer == address(0)) revert ZeroAddress();
 
         __AccessControl_init();
         __Pausable_init();
@@ -171,12 +181,12 @@ contract SecretStore is
         bytes calldata signatureA,
         bytes calldata signatureB
     ) external whenNotPaused nonReentrant {
-        // Check if agreement already exists
+        // Check agreement doesn't exist and validate addresses
         Agreement memory agreement = agreements[secretHash];
-        require(agreement.partyA == address(0), "Secret already registered");
-        require(partyA != address(0), "Invalid party A address");
-        require(partyB != address(0), "Invalid party B address");
-        require(partyA != partyB, "Parties must be different");
+        if (agreement.partyA != address(0)) revert SecretAlreadyRegistered();
+        if (partyA == address(0)) revert InvalidPartyAddress();
+        if (partyB == address(0)) revert InvalidPartyAddress();
+        if (partyA == partyB) revert PartiesMustBeDifferent();
 
         // Cache the struct hash to avoid recomputation
         bytes32 structHash = keccak256(
@@ -193,14 +203,14 @@ contract SecretStore is
             hash,
             signatureA
         );
-        require(validA, "Invalid signature from partyA");
+        if (!validA) revert InvalidSignature();
 
         bool validB = SignatureChecker.isValidSignatureNow(
             partyB,
             hash,
             signatureB
         );
-        require(validB, "Invalid signature from partyB");
+        if (!validB) revert InvalidSignature();
 
         // Write directly to storage once
         agreements[secretHash] = Agreement({
@@ -234,15 +244,11 @@ contract SecretStore is
         // Load agreement data for validation
         Agreement memory agreement = agreements[secretHash];
 
-        require(agreement.partyA != address(0), "Agreement does not exist");
-        require(
-            msg.sender == agreement.partyA || msg.sender == agreement.partyB,
-            "Not a party to agreement"
-        );
-        require(
-            keccak256(abi.encodePacked(secret, salt)) == secretHash,
-            "Invalid secret or salt"
-        );
+        if (agreement.partyA == address(0)) revert AgreementDoesNotExist();
+        if (msg.sender != agreement.partyA && msg.sender != agreement.partyB) revert NotAParty();
+        
+        bytes32 computedHash = keccak256(abi.encodePacked(secret, salt));
+        if (computedHash != secretHash) revert InvalidSaltForSecret();
 
         // Delete storage before events to avoid unnecessary reads
         delete agreements[secretHash];
@@ -311,10 +317,7 @@ contract SecretStore is
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(UPGRADER_ROLE) {
-        require(
-            newImplementation != address(0),
-            "Invalid implementation address"
-        );
+        if (newImplementation == address(0)) revert ZeroAddress();
     }
 
     /// @dev Returns the hash of typed data for EIP-712 signatures

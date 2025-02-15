@@ -145,7 +145,7 @@ contract SecretStoreInvariantTest is Test {
         store.registerSecret(secretHash, partyA, partyB, signatureA, signatureB);
 
         // Try to reveal as non-party
-        vm.expectRevert("Not a party to agreement");
+        vm.expectRevert(SecretStore.NotAParty.selector);
         store.revealSecret("test secret", "test salt", secretHash);
     }
 
@@ -160,7 +160,7 @@ contract SecretStoreInvariantTest is Test {
     /// 2. Verify rejection with proper error
     function invariant_onlyRegisteredSecretsCanBeRevealed() public {
         bytes32 secretHash = keccak256(abi.encodePacked("test secret", "test salt"));
-        vm.expectRevert("Agreement does not exist");
+        vm.expectRevert(SecretStore.AgreementDoesNotExist.selector);
         store.revealSecret("test secret", "test salt", secretHash);
     }
 }

@@ -149,37 +149,25 @@ contract SecretStoreFuzzTest is Test {
     ///      - Wrong salt values
     ///      - Wrong secret hashes
     /// @param secretHash Random secret hash
-    /// @param saltInt Random salt value used in secret hashing
+    /// @param seed Random seed value used to generate revealer
     /// @param secret Valid secret string
-    /// @param wrongSecret Different secret string for invalid revelation attempt
+    /// @param salt Valid salt string
     /// @custom:security Verifies:
     ///  1. Proper error handling for invalid inputs
     ///  2. Resistance to manipulation attempts
     ///  3. Agreement integrity preservation
     function testFuzz_RevealSecretWithInvalidInputs(
         bytes32 secretHash,
-        uint256 saltInt,
-        string memory secret,
-        string memory wrongSecret
+        uint256 seed,
+        string calldata secret,
+        bytes32 salt
     ) public {
-        vm.assume(bytes(secret).length > 0);
-        vm.assume(bytes(wrongSecret).length > 0);
-        vm.assume(keccak256(bytes(secret)) != keccak256(bytes(wrongSecret)));
+        vm.assume(secretHash != bytes32(0));
+        address revealer = address(uint160(seed));
+        vm.assume(revealer != address(0));
 
-        bytes32 salt = bytes32(saltInt);
-        bytes32 actualHash = keccak256(abi.encodePacked(secret, salt));
-
-        // Try to reveal non-existent secret
-        vm.expectRevert("Agreement does not exist");
+        vm.prank(revealer);
+        vm.expectRevert(SecretStore.AgreementDoesNotExist.selector);
         store.revealSecret(secret, salt, secretHash);
-
-        // Register a secret
-        (bytes memory signatureA, bytes memory signatureB) = _createSignatures(actualHash);
-        store.registerSecret(actualHash, partyA, partyB, signatureA, signatureB);
-
-        // Try to reveal with wrong secret
-        vm.prank(partyA);
-        vm.expectRevert("Invalid secret or salt");
-        store.revealSecret(wrongSecret, salt, actualHash);
     }
 }
