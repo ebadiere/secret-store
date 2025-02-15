@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.22;
 
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
@@ -27,11 +25,9 @@ import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/crypt
 ///         - Initialization occurs once in proxy context via initialize()
 ///         - New implementations must maintain storage layout compatibility
 contract SecretStore is
-    Initializable,
     UUPSUpgradeable,
     AccessControlUpgradeable,
     PausableUpgradeable,
-    ReentrancyGuardUpgradeable,
     EIP712Upgradeable
 {
     /// @dev Custom errors for better gas efficiency and clearer error messages
@@ -133,20 +129,18 @@ contract SecretStore is
     /// 3. Protected by initializer modifier to prevent multiple initializations
     /// 4. Sets up all OpenZeppelin upgradeable contracts
     /// 5. Grants initial roles to deployer (should be transferred after deployment)
-    /// @param deployer Address to be granted all initial roles (DEFAULT_ADMIN_ROLE, PAUSER_ROLE, UPGRADER_ROLE)
-    function initialize(address deployer) external initializer {
-        if (deployer == address(0)) revert ZeroAddress();
+    /// @param admin Address to be granted all initial roles (DEFAULT_ADMIN_ROLE, PAUSER_ROLE, UPGRADER_ROLE)
+    function initialize(address admin) external initializer {
+        if (admin == address(0)) revert ZeroAddress();
 
         __AccessControl_init();
         __Pausable_init();
-        __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         __EIP712_init("SecretStore", "1");
 
-        // Set up roles
-        _grantRole(DEFAULT_ADMIN_ROLE, deployer);
-        _grantRole(PAUSER_ROLE, deployer);
-        _grantRole(UPGRADER_ROLE, deployer);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PAUSER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
     }
 
     /// @notice Register a new secret agreement between two parties
@@ -166,7 +160,7 @@ contract SecretStore is
         address partyB,
         bytes calldata signatureA,
         bytes calldata signatureB
-    ) external whenNotPaused nonReentrant {
+    ) external whenNotPaused {
         // Check agreement doesn't exist and validate addresses
         Agreement memory agreement = agreements[secretHash];
         if (agreement.partyA != address(0)) revert SecretAlreadyRegistered();
@@ -223,7 +217,7 @@ contract SecretStore is
         string calldata secret,
         bytes32 salt,
         bytes32 secretHash
-    ) external whenNotPaused nonReentrant {
+    ) external whenNotPaused {
         // Load agreement data for validation
         Agreement memory agreement = agreements[secretHash];
 

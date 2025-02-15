@@ -299,18 +299,26 @@ Both approaches produce valid EIP-712 signatures that are verified on-chain. The
 - Adheres to a stable storage layout
 
 ### Emergency Pause
-- Pausable contract halts key functions if a vulnerability arises
+- Pauser role can halt operations
+- Prevents new registrations and revelations
+- Required for upgrades
 
-### Reentrancy Protection
-- Uses `nonReentrant` modifier on state-changing functions as a defensive measure:
-  - **Future-Proofing**: Protects against potential reentrancy vectors in future upgrades
-  - **Human Oversight**: Guards against accidental introduction of vulnerable patterns
-  - **Defense in Depth**: Adds an extra layer of security at minimal cost
-  - **Low Overhead**: The small gas cost is justified by the security benefit
-- Note: This protection may be removed if security auditors determine it's unnecessary
+### Access Control
+- Role-based permissions
+- Separate roles for different responsibilities
+- Admin can manage roles
 
-### No Partial Agreements
-- Registration is atomic with both signatures required in a single transaction
+### EIP-712 Signatures
+- Structured data signing
+- Domain separation
+- Clear signing messages
+- Replay protection
+
+### Storage Security
+- Packed structs for gas efficiency
+- No delegate calls
+- No assembly except in standard libraries
+- No external contract dependencies
 
 ---
 
