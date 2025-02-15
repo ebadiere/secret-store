@@ -22,6 +22,7 @@ import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/crypt
 ///      2. The contract uses UUPS (EIP-1822) for upgradeability:
 ///         - Implementation address stored in proxy at keccak256("PROXIABLE")
 ///         - Only UPGRADER_ROLE can perform upgrades via _authorizeUpgrade
+///         - Contract must be paused before upgrades can be performed
 ///         - State persists in proxy while implementation provides logic
 ///         - Initialization occurs once in proxy context via initialize()
 ///         - New implementations must maintain storage layout compatibility
@@ -85,11 +86,16 @@ contract SecretStore is
     mapping(bytes32 => Agreement) public agreements;
 
     // Events
+    /// @notice Emitted when a new agreement is registered
+    /// @param secretHash The hash of the secret and salt
+    /// @param partyA The first party in the agreement
+    /// @param partyB The second party in the agreement
+    /// @param timestamp The block timestamp when the agreement was registered
+    /// @param blockNumber The block number when the agreement was registered
     /// @dev Gas optimization: We only index parameters that will be used for filtering
     /// - secretHash is indexed as it's the primary key for lookups
     /// - partyA/partyB are indexed as they're used to filter agreements by participant
     /// - timestamp and blockNumber are not indexed as they're rarely used for filtering
-    /// and indexing them would increase gas costs unnecessarily
     event SecretRegistered(
         bytes32 indexed secretHash,
         address indexed partyA,
@@ -98,9 +104,11 @@ contract SecretStore is
         uint256 blockNumber
     );
 
-    /// @dev Gas optimization: We index secretHash for correlation with registration
-    /// and revealer for filtering reveals by address. The secret itself is not indexed
-    /// as it would be expensive and is never used for filtering.
+    /// @notice Emitted when a secret is revealed
+    /// @param secretHash The hash of the secret and salt
+    /// @param revealer The address that revealed the secret
+    /// @param secret The revealed secret
+    /// @dev The agreement is automatically deleted after the secret is revealed
     event SecretRevealed(
         bytes32 indexed secretHash,
         address indexed revealer,
@@ -262,17 +270,20 @@ contract SecretStore is
     /// @notice Authorizes an upgrade to a new implementation
     /// @dev Required by the UUPSUpgradeable contract (EIP-1822) to authorize upgrades.
     /// This function is called internally during upgrade operations to verify
-    /// that the upgrade is authorized.
+    /// that the caller has the necessary permissions to perform the upgrade.
     ///
-    /// Security:
-    /// 1. onlyRole(UPGRADER_ROLE) ensures only authorized addresses can upgrade
-    /// 2. Zero address check prevents accidental upgrade to invalid implementation
-    /// 3. whenPaused modifier ensures upgrades only happen when contract is paused
+    /// Security notes:
+    /// 1. Only UPGRADER_ROLE can perform upgrades
+    /// 2. Contract must be paused before upgrades
+    /// 3. The function MUST be present in new implementations
+    /// 4. If removed, the contract becomes non-upgradeable
     ///
-    /// Gas optimization:
-    /// 1. Uses OpenZeppelin's onlyRole modifier which has optimized role checking
-    /// 2. Reverts early if address is zero
-    /// @param newImplementation The address of the new implementation contract
+    /// Note: While this implementation only performs a read-only check, the function
+    /// cannot be marked as `view` because it is part of the upgrade process which
+    /// modifies state in the proxy contract. The compiler warning about this can
+    /// be safely ignored.
+    ///
+    /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(UPGRADER_ROLE) whenPaused {
