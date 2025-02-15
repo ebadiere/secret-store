@@ -42,6 +42,7 @@ contract SecretStore is
     error AgreementDoesNotExist();
     error InvalidSaltForSecret();
     error NotAParty();
+    error ContractNotPaused();
 
     /// @dev This packing reduces storage operations from 4 slots to 2 slots (~43% gas savings)
     /// - timestamp as uint96 supports dates until year 2^96 (far future)
@@ -261,22 +262,20 @@ contract SecretStore is
     /// @notice Authorizes an upgrade to a new implementation
     /// @dev Required by the UUPSUpgradeable contract (EIP-1822) to authorize upgrades.
     /// This function is called internally during upgrade operations to verify
-    /// that the caller has the necessary permissions to perform the upgrade.
+    /// that the upgrade is authorized.
     ///
-    /// Security notes:
-    /// 1. Only UPGRADER_ROLE can perform upgrades
-    /// 2. The function MUST be present in new implementations
-    /// 3. If removed, the contract becomes non-upgradeable
+    /// Security:
+    /// 1. onlyRole(UPGRADER_ROLE) ensures only authorized addresses can upgrade
+    /// 2. Zero address check prevents accidental upgrade to invalid implementation
+    /// 3. whenPaused modifier ensures upgrades only happen when contract is paused
     ///
-    /// Note: While this implementation only performs a read-only check, the function
-    /// cannot be marked as `view` because it is part of the upgrade process which
-    /// modifies state in the proxy contract. The compiler warning about this can
-    /// be safely ignored.
-    ///
-    /// @param newImplementation Address of the new implementation contract
+    /// Gas optimization:
+    /// 1. Uses OpenZeppelin's onlyRole modifier which has optimized role checking
+    /// 2. Reverts early if address is zero
+    /// @param newImplementation The address of the new implementation contract
     function _authorizeUpgrade(
         address newImplementation
-    ) internal override onlyRole(UPGRADER_ROLE) {
+    ) internal override onlyRole(UPGRADER_ROLE) whenPaused {
         if (newImplementation == address(0)) revert ZeroAddress();
     }
 }

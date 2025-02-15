@@ -110,6 +110,9 @@ contract SecretStoreUpgradeTest is Test {
     /// 2. Prevents accidental proxy bricking
     /// 3. Maintains upgrade safety checks
     function testCannotUpgradeToZeroAddress() public {
+        // Must pause before upgrade
+        store.pause();
+        
         vm.startPrank(admin);
         vm.expectRevert(SecretStore.ZeroAddress.selector);
         store.upgradeToAndCall(address(0), "");
@@ -157,6 +160,7 @@ contract SecretStoreUpgradeTest is Test {
         
         // Perform upgrade
         SecretStore newImplementation = new SecretStore();
+        store.pause();
         store.upgradeToAndCall(address(newImplementation), "");
         
         // Verify agreement storage after upgrade
@@ -221,5 +225,59 @@ contract SecretStoreUpgradeTest is Test {
         (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(PARTY_B_KEY, digest);
         signatureA = abi.encodePacked(r1, s1, v1);
         signatureB = abi.encodePacked(r2, s2, v2);
+    }
+
+    /// @notice Upgrade test
+    /// @dev Verifies:
+    /// 1. Upgrade can only occur when paused
+    /// 2. Prevents accidental upgrades
+    /// 3. Maintains upgrade safety checks
+    function testUpgrade() public {
+        SecretStore newImplementation = new SecretStore();
+        
+        // Must pause before upgrade
+        store.pause();
+        
+        store.upgradeToAndCall(address(newImplementation), "");
+        assertEq(
+            ERC1967Proxy(payable(address(store))).implementation(),
+            address(newImplementation)
+        );
+    }
+
+    /// @notice Only upgrader role can upgrade test
+    /// @dev Verifies:
+    /// 1. Only UPGRADER_ROLE can perform upgrades
+    /// 2. Non-upgraders are properly rejected
+    /// 3. Access control errors are properly formatted
+    function testOnlyUpgraderRoleCanUpgrade() public {
+        SecretStore newImplementation = new SecretStore();
+        
+        // Must pause before upgrade
+        store.pause();
+        
+        // Remove UPGRADER_ROLE from test contract
+        store.revokeRole(store.UPGRADER_ROLE(), address(this));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AccessControlUpgradeable.AccessControlUnauthorizedAccount.selector,
+                address(this),
+                store.UPGRADER_ROLE()
+            )
+        );
+        store.upgradeToAndCall(address(newImplementation), "");
+    }
+
+    /// @notice Cannot upgrade when not paused test
+    /// @dev Verifies:
+    /// 1. Upgrade can only occur when paused
+    /// 2. Prevents accidental upgrades
+    /// 3. Maintains upgrade safety checks
+    function testCannotUpgradeWhenNotPaused() public {
+        SecretStore newImplementation = new SecretStore();
+        
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        store.upgradeToAndCall(address(newImplementation), "");
     }
 }
